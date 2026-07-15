@@ -1,0 +1,2122 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+PolonOS Welcome App
+Centrum konfiguracji poinstalacyjnej dla PolonOS.
+Napisane w Pythonie z użyciem biblioteki PyQt6.
+"""
+
+import os
+import sys
+import subprocess
+import re
+import tempfile
+import shutil
+import socket
+import urllib.request
+from PyQt6 import QtCore, QtGui, QtWidgets
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
+from PyQt6.QtGui import QIcon, QPixmap, QColor, QFont, QLinearGradient, QPainter, QBrush, QPen, QDesktopServices
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QFrame, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QCheckBox, QScrollArea, QStackedWidget, QPlainTextEdit,
+    QGridLayout, QProgressBar, QSizePolicy
+)
+
+# --- CONFIGURATION & PATHS ---
+AUTOSTART_DIR = os.path.expanduser("~/.config/autostart")
+AUTOSTART_FILE = os.path.join(AUTOSTART_DIR, "polonos-welcome.desktop")
+DISABLE_MARKER_FILE = os.path.expanduser("~/.config/polonos-welcome-autostart-disabled")
+INSTALLED_MARKER_FILE = os.path.expanduser("~/.config/polonos-welcome-installed-apps")
+
+def get_manually_installed_apps():
+    """Zwraca listę ręcznie zainstalowanych programów z pliku konfiguracyjnego."""
+    if not os.path.exists(INSTALLED_MARKER_FILE):
+        return []
+    try:
+        with open(INSTALLED_MARKER_FILE, "r", encoding="utf-8") as f:
+            return [line.strip() for line in f if line.strip()]
+    except Exception:
+        return []
+
+def mark_app_as_installed(app_id):
+    """Zapisuje program jako zainstalowany do pliku konfiguracyjnego."""
+    try:
+        os.makedirs(os.path.dirname(INSTALLED_MARKER_FILE), exist_ok=True)
+        installed = get_manually_installed_apps()
+        if app_id not in installed:
+            installed.append(app_id)
+            with open(INSTALLED_MARKER_FILE, "w", encoding="utf-8") as f:
+                f.write("\n".join(installed))
+    except Exception as e:
+        print(f"Error marking app as installed: {e}")
+
+def is_app_installed(app_id, app_type="apt"):
+    """Sprawdza, czy program jest zainstalowany (poprzez plik konfiguracyjny, dpkg lub flatpak)."""
+    # 1. Sprawdź plik konfiguracyjny
+    if app_id in get_manually_installed_apps():
+        return True
+        
+    # 2. Sprawdź flatpak lub dpkg
+    if app_type == "flatpak":
+        try:
+            result = subprocess.run(
+                ["flatpak", "info", app_id],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=2
+            )
+            if result.returncode == 0:
+                mark_app_as_installed(app_id)
+                return True
+        except Exception:
+            pass
+    else:
+        try:
+            result = subprocess.run(
+                ["dpkg-query", "-W", "-f=${Status}", app_id],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=2
+            )
+            if "install ok installed" in result.stdout:
+                # Automatycznie dodaj do pliku konfiguracyjnego dla trwałości
+                mark_app_as_installed(app_id)
+                return True
+        except Exception:
+            pass
+    return False
+
+def get_network_info():
+    """
+    Zwraca tuple (connected, type_str, name_str) lub (False, None, None)
+    type_str: 'przewodowe' (ethernet) lub 'bezprzewodowe' (wifi) lub inny
+    name_str: nazwa sieci (SSID / nazwa połączenia)
+    """
+    try:
+        # Uruchomienie nmcli z LANG=C w celu ujednolicenia formatu wyjściowego
+        output = subprocess.check_output(
+            "LANG=C nmcli -t -f DEVICE,TYPE,STATE,CONNECTION device",
+            shell=True,
+            stderr=subprocess.DEVNULL
+        ).decode("utf-8")
+        
+        for line in output.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(":")
+            if len(parts) >= 4:
+                device, dev_type, state, connection = parts[0], parts[1], parts[2], parts[3]
+                if state == "connected" and dev_type in ("wifi", "ethernet"):
+                    type_str = "bezprzewodowe" if dev_type == "wifi" else "przewodowe"
+                    return True, type_str, connection
+    except Exception:
+        pass
+        
+    # Alternatywna metoda sprawdzania połączenia przez gniazda (socket)
+    try:
+        socket.setdefaulttimeout(2)
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(("8.8.8.8", 53))
+        return True, "przewodowe lub bezprzewodowe", "Aktywne połączenie"
+    except Exception:
+        pass
+        
+    return False, None, None
+
+
+def get_asset_path(filename):
+    """Próbuje znaleźć pliki graficzne w bieżącym katalogu, roboczym lub systemowym."""
+    # 1. Katalog uruchomionego skryptu
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(script_dir, filename)
+    if os.path.exists(path):
+        return path
+    # 2. Bieżący katalog roboczy
+    path = os.path.join(os.getcwd(), filename)
+    if os.path.exists(path):
+        return path
+    # 3. Systemowy katalog dystrybucji PolonOS
+    path = os.path.join("/usr/share/polonos", filename)
+    if os.path.exists(path):
+        return path
+    # 4. Systemowy katalog pixmaps
+    path = os.path.join("/usr/share/pixmaps", filename)
+    if os.path.exists(path):
+        return path
+    # 5. Dev paths relative to script dir (checking 2, 3 and 4 levels up for robustness)
+    for levels_up in ("../../", "../../../", "../../../../"):
+        for subdir in ("GRAPHIC/LOGO", "GRAPHIC/WALLPAPER", "GRAPHIC/Tapeta SVG"):
+            path = os.path.abspath(os.path.join(script_dir, levels_up, subdir, filename))
+            if os.path.exists(path):
+                return path
+    # 6. Dev paths relative to current working directory (checking 0, 1 and 2 levels up for robustness)
+    for prefix in ("", "../", "../../"):
+        for subdir in ("GRAPHIC/LOGO", "GRAPHIC/WALLPAPER", "GRAPHIC/Tapeta SVG"):
+            path = os.path.abspath(os.path.join(os.getcwd(), prefix, subdir, filename))
+            if os.path.exists(path):
+                return path
+    return None
+
+def create_default_icons():
+    """Generuje ikony w pamięci podręcznej użytkownika, jeśli nie ma plików lokalnych."""
+    cache_dir = os.path.expanduser("~/.cache/polonos-welcome")
+    os.makedirs(cache_dir, exist_ok=True)
+    
+    # 1. Ikona zaznaczenia (checkmark) dla checkboxów
+    check_path = os.path.join(cache_dir, "check.png")
+    if not os.path.exists(check_path):
+        img = QtGui.QImage(16, 16, QtGui.QImage.Format.Format_ARGB32)
+        img.fill(QtCore.Qt.GlobalColor.transparent)
+        painter = QtGui.QPainter(img)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        pen = QtGui.QPen(QColor(255, 255, 255), 2.5, QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.RoundCap, QtCore.Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        path = QtGui.QPainterPath()
+        path.moveTo(3, 8)
+        path.lineTo(7, 12)
+        path.lineTo(13, 4)
+        painter.drawPath(path)
+        painter.end()
+        img.save(check_path)
+        
+    return check_path
+
+# --- AUTOSTART LOGIC ---
+def is_autostart_enabled():
+    if os.path.exists(DISABLE_MARKER_FILE):
+        return False
+    if os.path.exists(AUTOSTART_FILE):
+        try:
+            with open(AUTOSTART_FILE, "r", encoding="utf-8") as f:
+                content = f.read()
+                if "Hidden=true" in content:
+                    return False
+        except Exception:
+            pass
+    return True
+
+def set_autostart_enabled(enabled):
+    exec_path = "/usr/bin/polonos-welcome"
+    if not os.path.exists(exec_path):
+        exec_path = os.path.abspath(sys.argv[0])
+        
+    if enabled:
+        # Remove disable marker if it exists
+        if os.path.exists(DISABLE_MARKER_FILE):
+            try:
+                os.remove(DISABLE_MARKER_FILE)
+            except Exception as e:
+                print(f"Error removing disable marker: {e}")
+                
+        # Create autostart file
+        os.makedirs(AUTOSTART_DIR, exist_ok=True)
+        content = f"""[Desktop Entry]
+Type=Application
+Name=Witamy w PolonOS
+Comment=Centrum konfiguracji poinstalacyjnej PolonOS
+Exec={exec_path}
+Icon=polonos-logo
+Terminal=false
+Categories=System;
+X-KDE-autostart-after=panel
+"""
+        try:
+            with open(AUTOSTART_FILE, "w", encoding="utf-8") as f:
+                f.write(content)
+            os.chmod(AUTOSTART_FILE, 0o755)
+        except Exception as e:
+            print(f"Error writing autostart file: {e}")
+    else:
+        # Create disable marker
+        try:
+            os.makedirs(os.path.dirname(DISABLE_MARKER_FILE), exist_ok=True)
+            with open(DISABLE_MARKER_FILE, "w", encoding="utf-8") as f:
+                f.write("disabled")
+        except Exception as e:
+            print(f"Error writing disable marker: {e}")
+            
+        # Write autostart file with Hidden=true to override the global template
+        os.makedirs(AUTOSTART_DIR, exist_ok=True)
+        content = f"""[Desktop Entry]
+Type=Application
+Name=Witamy w PolonOS
+Comment=Centrum konfiguracji poinstalacyjnej PolonOS
+Exec={exec_path}
+Icon=polonos-logo
+Terminal=false
+Categories=System;
+X-KDE-autostart-after=panel
+Hidden=true
+"""
+        try:
+            with open(AUTOSTART_FILE, "w", encoding="utf-8") as f:
+                f.write(content)
+            os.chmod(AUTOSTART_FILE, 0o755)
+        except Exception as e:
+            print(f"Error writing autostart file: {e}")
+
+# --- SYSTEM INFORMATION GETTERS ---
+def get_kernel():
+    try:
+        return subprocess.check_output(["uname", "-r"]).decode().strip()
+    except:
+        return "Nieznany"
+
+def get_cpu():
+    try:
+        with open("/proc/cpuinfo", "r") as f:
+            for line in f:
+                if "model name" in line:
+                    return re.sub(r".*:\s*", "", line).strip()
+        return "Nieznany procesor"
+    except:
+        return "Nieznany"
+
+def get_ram():
+    try:
+        with open("/proc/meminfo", "r") as f:
+            for line in f:
+                if "MemTotal" in line:
+                    total_kb = int(re.findall(r"\d+", line)[0])
+                    return f"{round(total_kb / 1024 / 1024, 1)} GB"
+        return "Nieznana"
+    except:
+        return "Nieznana"
+
+# --- HARDWARE CHECK BACKGROUND THREAD ---
+class HardwareCheckThread(QThread):
+    progress_signal = pyqtSignal(str)
+    drivers_recommend_signal = pyqtSignal(list)
+    finished_signal = pyqtSignal()
+    
+    def __init__(self):
+        super().__init__()
+        self.nvidia_stable_ver = None
+        self.nvidia_latest_ver = None
+        
+    def run(self):
+        self.progress_signal.emit("=== ROZPOCZĘTO SKANOWANIE SPRZĘTU ===\n")
+        self.sleep(1)
+        
+        # 1. Check network
+        self.progress_signal.emit("[*] Sprawdzanie połączenia sieciowego...")
+        network_ok = False
+        try:
+            # Try to resolve a host (Google DNS)
+            socket.setdefaulttimeout(3)
+            socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(("8.8.8.8", 53))
+            network_ok = True
+            self.progress_signal.emit("    Status: POŁĄCZONO Z INTERNETEM\n")
+        except Exception:
+            self.progress_signal.emit("    Status: BRAK POŁĄCZENIA (testy aktualizacji mogą być ograniczone)\n")
+            
+        self.sleep(1)
+        
+        # 2. Check GPU
+        self.progress_signal.emit("[*] Wykrywanie karty graficznej (GPU)...")
+        nvidia_detected = False
+        amd_detected = False
+        gpu_info = ""
+        try:
+            lspci_gpu = subprocess.check_output("lspci | grep -i 'vga\\|3d'", shell=True).decode().strip()
+            self.progress_signal.emit("    Wykryte urządzenia wideo:")
+            for line in lspci_gpu.split("\n"):
+                self.progress_signal.emit(f"    -> {line}")
+                if "nvidia" in line.lower():
+                    nvidia_detected = True
+                if "amd" in line.lower() or "ati" in line.lower():
+                    amd_detected = True
+            gpu_info = lspci_gpu
+        except Exception as e:
+            self.progress_signal.emit("    Błąd wykrywania GPU: " + str(e))
+            
+        self.progress_signal.emit("")
+        self.sleep(1)
+        
+        # 3. Check Network Interface (Wi-Fi)
+        self.progress_signal.emit("[*] Wykrywanie kart sieciowych (Wi-Fi/Ethernet)...")
+        broadcom_detected = False
+        try:
+            lspci_net = subprocess.check_output("lspci | grep -i 'network\\|wireless\\|ethernet'", shell=True).decode().strip()
+            for line in lspci_net.split("\n"):
+                self.progress_signal.emit(f"    -> {line}")
+                if "broadcom" in line.lower():
+                    broadcom_detected = True
+        except Exception as e:
+            self.progress_signal.emit("    Błąd wykrywania kart sieciowych: " + str(e))
+            
+        self.progress_signal.emit("")
+        self.sleep(1)
+        
+        # 4. Check System Updates (Simulation dry-run)
+        updates_count = 0
+        if network_ok:
+            self.progress_signal.emit("[*] Sprawdzanie dostępności aktualizacji systemowych...")
+            try:
+                # Run with LANG=C to avoid parsing localized text
+                upgrade_check = subprocess.check_output("LANG=C apt-get -s upgrade", shell=True).decode()
+                match = re.search(r"(\d+) upgraded", upgrade_check)
+                if match:
+                    updates_count = int(match.group(1))
+                    self.progress_signal.emit(f"    Znaleziono: {updates_count} pakietów do aktualizacji.\n")
+                else:
+                    self.progress_signal.emit("    Brak oczekujących aktualizacji systemowych.\n")
+            except Exception as e:
+                self.progress_signal.emit("    Nie udało się sprawdzić aktualizacji: " + str(e) + "\n")
+        else:
+            self.progress_signal.emit("[*] Pominięto sprawdzanie aktualizacji (brak połączenia z siecią).\n")
+            
+        self.sleep(1)
+        
+        # Compile recommendations
+        recommendations = []
+        self.progress_signal.emit("=== WNIOSKI I REKOMENDACJE ===")
+        
+        if nvidia_detected:
+            self.progress_signal.emit("[!] Wykryto kartę graficzną NVIDIA.")
+            self.progress_signal.emit("    Zalecenie: Instalacja własnościowych sterowników NVIDIA dla optymalnej wydajności 3D.")
+            self.progress_signal.emit("[*] Pobieranie informacji o wersjach sterowników NVIDIA...")
+            
+            # Query local candidate version (stable)
+            try:
+                output = subprocess.check_output(
+                    "apt-cache policy nvidia-driver",
+                    shell=True,
+                    stderr=subprocess.DEVNULL
+                ).decode("utf-8")
+                for line in output.splitlines():
+                    if "Candidate:" in line or "Kandydat:" in line:
+                        candidate = line.split(":", 1)[1].strip()
+                        if candidate and candidate != "(none)" and candidate != "(brak)":
+                            self.nvidia_stable_ver = candidate.split("-")[0]
+            except Exception:
+                pass
+                
+            # Fallback: Parse local APT list files in system or relative to script dir
+            if not self.nvidia_stable_ver:
+                try:
+                    script_dir = os.path.dirname(os.path.abspath(__file__))
+                    paths_to_check = [
+                        os.path.abspath(os.path.join(script_dir, "../../var/lib/apt/lists")),
+                        "/var/lib/apt/lists"
+                    ]
+                    for lists_dir in paths_to_check:
+                        if os.path.exists(lists_dir):
+                            for filename in os.listdir(lists_dir):
+                                if filename.endswith("Packages"):
+                                    filepath = os.path.join(lists_dir, filename)
+                                    with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                                        content = f.read()
+                                        if "Package: nvidia-driver\n" in content:
+                                            blocks = content.split("\n\n")
+                                            for block in blocks:
+                                                if "Package: nvidia-driver" in block:
+                                                    version_match = re.search(r"^Version:\s*([^\s\n]+)", block, re.MULTILINE)
+                                                    if version_match:
+                                                        self.nvidia_stable_ver = version_match.group(1).split("-")[0]
+                                                        break
+                                            if self.nvidia_stable_ver:
+                                                break
+                        if self.nvidia_stable_ver:
+                            break
+                except Exception:
+                    pass
+                
+            # Query latest version online
+            if network_ok:
+                try:
+                    url = "https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/Packages"
+                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req, timeout=5) as response:
+                        content = response.read().decode('utf-8', errors='ignore')
+                        versions = []
+                        blocks = content.split('\n\n')
+                        for block in blocks:
+                            lines = block.split('\n')
+                            is_target_pkg = False
+                            for line in lines:
+                                if line.strip() == 'Package: nvidia-driver':
+                                    is_target_pkg = True
+                                    break
+                            if is_target_pkg:
+                                version_match = re.search(r'^Version:\s*([^\s\n]+)', block, re.MULTILINE)
+                                if version_match:
+                                    versions.append(version_match.group(1).split('-')[0])
+                        if versions:
+                            def version_key(v):
+                                try:
+                                    return [int(x) for x in v.split('.')]
+                                except Exception:
+                                    return [0]
+                            versions.sort(key=version_key)
+                            self.nvidia_latest_ver = versions[-1]
+                except Exception:
+                    pass
+            
+            if self.nvidia_stable_ver:
+                self.progress_signal.emit(f"    Dostępna wersja stabilna w systemie: {self.nvidia_stable_ver}")
+            if self.nvidia_latest_ver:
+                self.progress_signal.emit(f"    Dostępna najnowsza wersja online: {self.nvidia_latest_ver}")
+                
+            recommendations.append("nvidia")
+        elif amd_detected:
+            self.progress_signal.emit("[i] Wykryto kartę graficzną AMD/Radeon.")
+            self.progress_signal.emit("    Zalecenie: Sprzęt działa na zintegrowanych sterownikach otwartych (Mesa). Instalacja nie jest wymagana.")
+        else:
+            self.progress_signal.emit("[i] Wykryto zintegrowaną grafikę Intel lub sterowniki standardowe.")
+            self.progress_signal.emit("    Zalecenie: Sprzęt działa poprawnie. Opcjonalna aktualizacja firmware.")
+            
+        if broadcom_detected:
+            self.progress_signal.emit("[!] Wykryto kartę Wi-Fi Broadcom.")
+            self.progress_signal.emit("    Zalecenie: Instalacja pakietu 'bcmwl-kernel-source' w celu uruchomienia bezprzewodowej karty sieciowej.")
+            recommendations.append("broadcom")
+            
+        if updates_count > 0:
+            self.progress_signal.emit(f"[!] Dostępnych jest {updates_count} aktualizacji systemowych.")
+            self.progress_signal.emit("    Zalecenie: Uruchomienie pełnej aktualizacji pakietów.")
+            recommendations.append("updates")
+            
+        if not recommendations:
+            self.progress_signal.emit("[OK] Twój sprzęt działa na optymalnych sterownikach otwartych.")
+            self.progress_signal.emit("     Brak krytycznych rekomendacji do instalacji.")
+            
+        self.progress_signal.emit("\nSkanowanie zakończone pomyślnie.")
+        self.drivers_recommend_signal.emit(recommendations)
+        self.finished_signal.emit()
+
+# --- CUSTOM SIDEBAR WIDGET WITH WALLPAPER BACKGROUND ---
+class SidebarWidget(QFrame):
+    def __init__(self, wallpaper_path, parent=None):
+        super().__init__(parent)
+        self.setObjectName("sidebar_container")
+        self.wallpaper_path = wallpaper_path
+        self.pixmap = None
+        if wallpaper_path and os.path.exists(wallpaper_path):
+            self.pixmap = QPixmap(wallpaper_path)
+            
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        if self.pixmap and not self.pixmap.isNull():
+            # Scale and crop the wallpaper to fit the sidebar size
+            scaled = self.pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+            x = (self.width() - scaled.width()) // 2
+            y = (self.height() - scaled.height()) // 2
+            painter.drawPixmap(x, y, scaled)
+            
+            # Semi-transparent dark overlay (frost effect overlay with 84% opacity)
+            painter.fillRect(self.rect(), QColor(17, 21, 27, 215))
+        else:
+            # Fallback to dark elegant gradient
+            gradient = QLinearGradient(0, 0, 0, self.height())
+            gradient.setColorAt(0.0, QColor(11, 15, 23))
+            gradient.setColorAt(1.0, QColor(7, 10, 15))
+            painter.fillRect(self.rect(), gradient)
+            
+        # Draw border
+        painter.setPen(QPen(QColor(30, 41, 59), 1))
+        painter.drawLine(self.width() - 1, 0, self.width() - 1, self.height())
+
+# --- GRAPHICAL INSTALLATION PROGRESS DIALOG ---
+class ProgressDialog(QtWidgets.QDialog):
+    def __init__(self, title, command, args, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setFixedSize(550, 380)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+        
+        # Style matching the premium dark theme
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #0b0f17;
+            }
+            QLabel {
+                color: #f8fafc;
+                font-size: 13px;
+            }
+            QProgressBar {
+                border: 1px solid #1e293b;
+                border-radius: 6px;
+                background-color: #0f172a;
+                text-align: center;
+                color: #ffffff;
+                font-weight: bold;
+                height: 22px;
+            }
+            QProgressBar::chunk {
+                background-color: #38bdf8;
+                border-radius: 5px;
+            }
+            QPlainTextEdit {
+                background-color: #0f172a;
+                color: #34d399;
+                font-family: 'Hack', 'Noto Mono', 'Courier New', monospace;
+                font-size: 11px;
+                border: 1px solid #1e293b;
+                border-radius: 6px;
+                padding: 8px;
+            }
+            QPushButton {
+                background-color: #1e293b;
+                color: #f8fafc;
+                border: 1px solid #334155;
+                border-radius: 6px;
+                padding: 8px 18px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #334155;
+                border-color: #38bdf8;
+            }
+            QPushButton:disabled {
+                background-color: #0f172a;
+                color: #64748b;
+                border-color: #1e293b;
+            }
+        """)
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+        
+        self.lbl_status = QLabel("Przygotowanie do instalacji...")
+        self.lbl_status.setStyleSheet("font-weight: bold; font-size: 14px; color: #38bdf8;")
+        layout.addWidget(self.lbl_status)
+        
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0) # Indeterminate mode by default
+        layout.addWidget(self.progress_bar)
+        
+        self.console = QPlainTextEdit()
+        self.console.setReadOnly(True)
+        layout.addWidget(self.console)
+        
+        self.btn_close = QPushButton("Zamknij")
+        self.btn_close.setEnabled(False)
+        self.btn_close.clicked.connect(self.accept)
+        layout.addWidget(self.btn_close, alignment=Qt.AlignmentFlag.AlignRight)
+        
+        # QProcess setup
+        self.process = QtCore.QProcess(self)
+        self.process.readyReadStandardOutput.connect(self.on_stdout)
+        self.process.readyReadStandardError.connect(self.on_stderr)
+        self.process.finished.connect(self.on_finished)
+        
+        self.command = command
+        self.args = args
+        
+    def showEvent(self, event):
+        super().showEvent(event)
+        QtCore.QTimer.singleShot(100, self.start_install)
+        
+    def start_install(self):
+        self.lbl_status.setText("Trwa autoryzacja i instalacja...")
+        self.console.appendPlainText("[PolonOS] Uruchamianie procesu instalacji z uprawnieniami administratora...")
+        self.process.start(self.command, self.args)
+        
+    def on_stdout(self):
+        data = self.process.readAllStandardOutput().data().decode("utf-8", errors="replace")
+        self.console.appendPlainText(data.strip())
+        
+        # Parse output line-by-line for status updates
+        for line in data.splitlines():
+            # Check for progress percentage in apt output if any
+            # e.g., "Progress: [ 50%]"
+            percent_match = re.search(r"Progress:\s*\[\s*(\d+)%\]", line)
+            if percent_match:
+                self.progress_bar.setRange(0, 100)
+                self.progress_bar.setValue(int(percent_match.group(1)))
+            elif "Unpacking" in line or "Rozpakowywanie" in line:
+                pkg_match = re.search(r"(?:Unpacking|Rozpakowywanie)\s+([a-zA-Z0-9.\-_+:]+)", line)
+                if pkg_match:
+                    self.lbl_status.setText(f"Rozpakowywanie: {pkg_match.group(1)}...")
+            elif "Setting up" in line or "Konfigurowanie" in line:
+                pkg_match = re.search(r"(?:Setting up|Konfigurowanie)\s+([a-zA-Z0-9.\-_+:]+)", line)
+                if pkg_match:
+                    self.lbl_status.setText(f"Konfigurowanie: {pkg_match.group(1)}...")
+                
+    def on_stderr(self):
+        data = self.process.readAllStandardError().data().decode("utf-8", errors="replace")
+        self.console.appendPlainText(data.strip())
+        
+    def on_finished(self, exit_code, exit_status):
+        self.progress_bar.setRange(0, 100)
+        if exit_code == 0:
+            self.progress_bar.setValue(100)
+            self.lbl_status.setText("Instalacja zakończona pomyślnie!")
+            self.console.appendPlainText("\n[PolonOS] Proces zakończony sukcesem.")
+        else:
+            self.lbl_status.setText("Instalacja nie powiodła się.")
+            if exit_code == 127:  # pkexec cancelled/dismissed
+                self.console.appendPlainText("\n[PolonOS] Błąd: Anulowano autoryzację.")
+            else:
+                self.console.appendPlainText(f"\n[PolonOS] Błąd: Proces zakończył się kodem {exit_code}.")
+        self.btn_close.setEnabled(True)
+
+
+# --- NVIDIA DRIVER CHOICE DIALOG ---
+class NvidiaDriverDialog(QtWidgets.QDialog):
+    def __init__(self, stable_ver=None, latest_ver=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Sterownik karty graficznej NVIDIA")
+        self.setFixedSize(500, 320)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+        
+        # Style matching the premium dark theme
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #0b0f17;
+            }
+            QLabel {
+                color: #f8fafc;
+                font-size: 13px;
+            }
+            QRadioButton {
+                color: #f8fafc;
+                font-size: 13px;
+                spacing: 8px;
+            }
+            QRadioButton::indicator {
+                width: 18px;
+                height: 18px;
+                border: 1px solid #475569;
+                border-radius: 9px;
+                background-color: #0f172a;
+            }
+            QRadioButton::indicator:hover {
+                border-color: #38bdf8;
+            }
+            QRadioButton::indicator:checked {
+                background-color: #38bdf8;
+                border-color: #38bdf8;
+            }
+            QPushButton {
+                background-color: #0284c7;
+                color: #ffffff;
+                border: none;
+                border-radius: 8px;
+                padding: 10px 20px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #0369a1;
+            }
+            QPushButton:pressed {
+                background-color: #075985;
+            }
+        """)
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(25, 25, 25, 25)
+        layout.setSpacing(15)
+        
+        lbl_title = QLabel("Wybór wersji sterownika NVIDIA")
+        lbl_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #38bdf8;")
+        layout.addWidget(lbl_title)
+        
+        lbl_desc = QLabel(
+            "Wykryto kartę graficzną NVIDIA. Wybierz wersję sterownika dostosowaną do Twoich potrzeb:"
+        )
+        lbl_desc.setWordWrap(True)
+        lbl_desc.setStyleSheet("color: #e2e8f0; line-height: 1.4;")
+        layout.addWidget(lbl_desc)
+        
+        stable_text = "Wersja stabilna (starsza)"
+        if stable_ver:
+            stable_text += f" (wersja: {stable_ver})"
+        self.radio_stable = QtWidgets.QRadioButton(stable_text)
+        self.radio_stable.setChecked(True)
+        lbl_stable_desc = QLabel("Zalecana dla większości użytkowników. Zapewnia maksymalną stabilność systemu.")
+        lbl_stable_desc.setWordWrap(True)
+        lbl_stable_desc.setStyleSheet("color: #94a3b8; font-size: 11px; margin-left: 26px; margin-bottom: 10px;")
+        
+        latest_text = "Najnowsza wersja (oficjalna)"
+        if latest_ver:
+            latest_text += f" (wersja: {latest_ver})"
+        self.radio_latest = QtWidgets.QRadioButton(latest_text)
+        lbl_latest_desc = QLabel("Zalecana dla graczy oraz osób korzystających z AI/CUDA. Pobiera najnowsze oprogramowanie bezpośrednio z serwerów NVIDIA.")
+        lbl_latest_desc.setWordWrap(True)
+        lbl_latest_desc.setStyleSheet("color: #94a3b8; font-size: 11px; margin-left: 26px;")
+        
+        layout.addWidget(self.radio_stable)
+        layout.addWidget(lbl_stable_desc)
+        layout.addWidget(self.radio_latest)
+        layout.addWidget(lbl_latest_desc)
+        
+        layout.addSpacing(10)
+        
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        
+        self.btn_ok = QPushButton("Zatwierdź")
+        self.btn_ok.clicked.connect(self.accept)
+        btn_layout.addWidget(self.btn_ok)
+        
+        layout.addLayout(btn_layout)
+        
+    def get_choice(self):
+        if self.radio_latest.isChecked():
+            return "latest"
+        return "stable"
+
+
+# --- MAIN WINDOW ---
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        
+        # Load local paths
+        self.wallpaper_path = get_asset_path("polonos_wallpaper.png")
+        self.logo_path = get_asset_path("polonos-logo.png") or get_asset_path("polonos-logo.svg")
+        self.check_icon_path = create_default_icons()
+        
+        # Window properties
+        self.setWindowTitle("Witamy w PolonOS")
+        self.setFixedSize(850, 600)
+        
+        # Center on screen
+        screen = QApplication.primaryScreen().availableGeometry()
+        x = (screen.width() - self.width()) // 2
+        y = (screen.height() - self.height()) // 2
+        self.move(x, y)
+        
+        # Setup Window Icon
+        if self.logo_path:
+            self.setWindowIcon(QIcon(self.logo_path))
+            
+        # Set central widget and stylesheet
+        self.central_widget = QWidget()
+        self.setCentralWidget(self.central_widget)
+        self.setup_stylesheet()
+        
+        # Build UI
+        self.init_ui()
+        
+        # Ensure autostart file is created if autostart is enabled (first run or user enabled)
+        if is_autostart_enabled():
+            set_autostart_enabled(True)
+        
+    def setup_stylesheet(self):
+        """Sets the application stylesheet (Premium Dark/Navy customized)."""
+        qss = """
+        QMainWindow {
+            background-color: #0b0f17;
+            color: #f8fafc;
+        }
+        
+        QWidget#content_pane {
+            background-color: #0b0f17;
+        }
+        
+        QLabel#tab_header {
+            color: #f8fafc;
+            font-size: 22px;
+            font-weight: bold;
+        }
+        
+        QLabel#tab_subtitle {
+            color: #94a3b8;
+            font-size: 13px;
+        }
+        
+        /* Navigation Buttons */
+        QPushButton#nav_button {
+            background-color: transparent;
+            color: #94a3b8;
+            border: none;
+            border-left: 4px solid transparent;
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        QPushButton#nav_button:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: #f8fafc;
+        }
+        
+        QPushButton#nav_button:checked {
+            background-color: rgba(56, 189, 248, 0.12);
+            color: #38bdf8;
+            border-left: 4px solid #38bdf8;
+            font-weight: bold;
+        }
+        
+        /* Card Containers */
+        QFrame#card {
+            background-color: #131b2e;
+            border: 1px solid #1e293b;
+            border-radius: 8px;
+        }
+        
+        QLabel#card_title {
+            color: #38bdf8;
+            font-size: 15px;
+            font-weight: bold;
+        }
+        
+        QLabel#card_info_label {
+            color: #94a3b8;
+            font-size: 13px;
+        }
+        
+        QLabel#card_info_value {
+            color: #f8fafc;
+            font-size: 13px;
+            font-weight: bold;
+        }
+        
+        /* Buttons */
+        QPushButton#primary_button {
+            background-color: #0284c7;
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: bold;
+        }
+        
+        QPushButton#primary_button:hover {
+            background-color: #0369a1;
+        }
+        
+        QPushButton#primary_button:pressed {
+            background-color: #075985;
+        }
+        
+        QPushButton#primary_button:disabled {
+            background-color: #1e293b;
+            color: #64748b;
+        }
+        
+        QPushButton#secondary_button {
+            background-color: #1e293b;
+            color: #f8fafc;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 10px 18px;
+            font-size: 13px;
+        }
+        
+        QPushButton#secondary_button:hover {
+            background-color: #334155;
+            border-color: #38bdf8;
+        }
+        
+        QPushButton#secondary_button:pressed {
+            background-color: #0f172a;
+        }
+        
+        /* Software Row frame */
+        QFrame#app_row {
+            background-color: #131b2e;
+            border: 1px solid #1e293b;
+            border-radius: 8px;
+        }
+        
+        QFrame#app_row:hover {
+            border-color: #334155;
+            background-color: #1e293b;
+        }
+        
+        /* Checkboxes */
+        QCheckBox {
+            color: #f8fafc;
+            font-size: 13px;
+            spacing: 8px;
+        }
+        
+        QCheckBox::indicator {
+            width: 18px;
+            height: 18px;
+            border: 1px solid #475569;
+            border-radius: 4px;
+            background-color: #0f172a;
+        }
+        
+        QCheckBox::indicator:hover {
+            border-color: #38bdf8;
+        }
+        
+        QCheckBox::indicator:checked {
+            background-color: #38bdf8;
+            border-color: #38bdf8;
+            image: url(CHECK_ICON_PATH);
+        }
+        
+        /* Text Editor console */
+        QPlainTextEdit#console_log {
+            background-color: #0f172a;
+            color: #34d399;
+            font-family: 'Hack', 'Noto Mono', 'Courier New', monospace;
+            font-size: 12px;
+            border: 1px solid #1e293b;
+            border-radius: 6px;
+            padding: 8px;
+        }
+        
+        /* Scroll areas */
+        QScrollArea {
+            border: none;
+            background-color: transparent;
+        }
+        
+        /* Separators */
+        QFrame#separator {
+            background-color: #1e293b;
+        }
+        
+        /* Scrollbars */
+        QScrollBar:vertical {
+            border: none;
+            background: #0f172a;
+            width: 10px;
+            margin: 0px 0 0px 0;
+        }
+        QScrollBar::handle:vertical {
+            background: #334155;
+            min-height: 20px;
+            border-radius: 5px;
+        }
+        QScrollBar::handle:vertical:hover {
+            background: #38bdf8;
+        }
+        QScrollBar::add-line:vertical {
+            border: none;
+            background: none;
+            height: 0px;
+        }
+        QScrollBar::sub-line:vertical {
+            border: none;
+            background: none;
+            height: 0px;
+        }
+        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+            background: none;
+        }
+
+        QScrollBar:horizontal {
+            border: none;
+            background: #0f172a;
+            height: 10px;
+            margin: 0px 0 0px 0;
+        }
+        QScrollBar::handle:horizontal {
+            background: #334155;
+            min-width: 20px;
+            border-radius: 5px;
+        }
+        QScrollBar::handle:horizontal:hover {
+            background: #38bdf8;
+        }
+        QScrollBar::add-line:horizontal {
+            border: none;
+            background: none;
+            width: 0px;
+        }
+        QScrollBar::sub-line:horizontal {
+            border: none;
+            background: none;
+            width: 0px;
+        }
+        QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+            background: none;
+        }
+        
+        /* Dialogs and Message Boxes */
+        QDialog {
+            background-color: #0b0f17;
+        }
+        QMessageBox {
+            background-color: #0b0f17;
+        }
+        QMessageBox QLabel {
+            color: #f8fafc;
+        }
+        QMessageBox QPushButton {
+            background-color: #1e293b;
+            color: #f8fafc;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            padding: 5px 15px;
+        }
+        QMessageBox QPushButton:hover {
+            background-color: #334155;
+            border-color: #38bdf8;
+        }
+        
+        /* Tooltips */
+        QToolTip {
+            background-color: #1e293b;
+            color: #f8fafc;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            padding: 4px;
+        }
+
+        /* Scroll Area Content styling */
+        QWidget#scroll_content {
+            background-color: transparent;
+        }
+        """
+        # Inject custom checkmark icon path into QSS
+        qss = qss.replace("CHECK_ICON_PATH", self.check_icon_path.replace("\\", "/"))
+        self.setStyleSheet(qss)
+        
+    def init_ui(self):
+        # Main layout: Sidebar (left) + Content pane (right)
+        main_layout = QHBoxLayout(self.central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        
+        # 1. Sidebar (with custom paint background)
+        self.sidebar = SidebarWidget(self.wallpaper_path)
+        self.sidebar.setFixedWidth(250)
+        sidebar_layout = QVBoxLayout(self.sidebar)
+        sidebar_layout.setContentsMargins(15, 25, 15, 25)
+        sidebar_layout.setSpacing(15)
+        
+        # Logo & App Title in Sidebar
+        logo_label = QLabel()
+        if self.logo_path:
+            logo_pix = QPixmap(self.logo_path)
+            logo_label.setPixmap(logo_pix.scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sidebar_layout.addWidget(logo_label)
+        
+        title_label = QLabel("PolonOS")
+        title_label.setObjectName("sidebar_title")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #ffffff;")
+        sidebar_layout.addWidget(title_label)
+        
+        sub_label = QLabel("WITAJ W SYSTEMIE")
+        sub_label.setObjectName("sidebar_subtitle")
+        sub_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sub_label.setStyleSheet("font-size: 10px; font-weight: bold; color: #38bdf8; letter-spacing: 1.5px;")
+        sidebar_layout.addWidget(sub_label)
+        
+        # Navigation spacer
+        sidebar_layout.addSpacing(25)
+        
+        # Navigation Buttons Group
+        self.nav_group = QtWidgets.QButtonGroup(self)
+        self.nav_group.setExclusive(True)
+        
+        self.btn_welcome = QPushButton("  Powitanie")
+        self.btn_welcome.setObjectName("nav_button")
+        self.btn_welcome.setIcon(self.get_theme_icon(["go-home", "help-about", "home"], QtWidgets.QStyle.StandardPixmap.SP_DirHomeIcon))
+        self.btn_welcome.setCheckable(True)
+        self.btn_welcome.setChecked(True)
+        sidebar_layout.addWidget(self.btn_welcome)
+        self.nav_group.addButton(self.btn_welcome, 0)
+        
+        self.btn_drivers = QPushButton("  Sterowniki i aktualizacje")
+        self.btn_drivers.setObjectName("nav_button")
+        self.btn_drivers.setIcon(self.get_theme_icon(["preferences-system-drivers", "system-software-update", "hwinfo"], QtWidgets.QStyle.StandardPixmap.SP_ComputerIcon))
+        self.btn_drivers.setCheckable(True)
+        sidebar_layout.addWidget(self.btn_drivers)
+        self.nav_group.addButton(self.btn_drivers, 1)
+        
+        self.btn_software = QPushButton("  Instalator aplikacji")
+        self.btn_software.setObjectName("nav_button")
+        self.btn_software.setIcon(self.get_theme_icon(["system-software-install", "discover", "applications-other"], QtWidgets.QStyle.StandardPixmap.SP_DriveHDIcon))
+        self.btn_software.setCheckable(True)
+        sidebar_layout.addWidget(self.btn_software)
+        self.nav_group.addButton(self.btn_software, 2)
+        
+        sidebar_layout.addStretch()
+        
+        main_layout.addWidget(self.sidebar)
+        
+        # 2. Right Pane: Stacked Widget (top) + Bottom Panel (autostart)
+        content_pane = QWidget()
+        content_pane.setObjectName("content_pane")
+        content_layout = QVBoxLayout(content_pane)
+        content_layout.setContentsMargins(30, 25, 30, 20)
+        content_layout.setSpacing(15)
+        
+        # Stacked Widget for pages
+        self.pages_stack = QStackedWidget()
+        
+        # Register pages
+        self.create_welcome_page()
+        self.create_drivers_page()
+        self.create_software_page()
+        
+        content_layout.addWidget(self.pages_stack)
+        
+        # Separator line before footer
+        sep = QFrame()
+        sep.setObjectName("separator")
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFrameShadow(QFrame.Shadow.Sunken)
+        sep.setFixedHeight(1)
+        content_layout.addWidget(sep)
+        
+        # Footer layout containing Autostart Checkbox
+        footer_layout = QHBoxLayout()
+        footer_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.chk_autostart = QCheckBox("Uruchamiaj aplikację automatycznie przy starcie systemu")
+        self.chk_autostart.setChecked(is_autostart_enabled())
+        self.chk_autostart.toggled.connect(self.on_autostart_toggled)
+        footer_layout.addWidget(self.chk_autostart)
+        
+        footer_layout.addStretch()
+        
+        # Add a small system version label in footer
+        lbl_version = QLabel("PolonOS v1.0 LTS")
+        lbl_version.setStyleSheet("color: #7f8c8d; font-size: 11px;")
+        footer_layout.addWidget(lbl_version)
+        
+        content_layout.addLayout(footer_layout)
+        
+        main_layout.addWidget(content_pane)
+        
+        # Wire navigation buttons to page stack switching
+        self.nav_group.idClicked.connect(self.pages_stack.setCurrentIndex)
+        
+    def get_theme_icon(self, names, fallback_pixmap=None):
+        """Pobiera ikonę z motywu systemowego, wspierając listę nazw zapasowych."""
+        for name in names:
+            icon = QIcon.fromTheme(name)
+            if not icon.isNull():
+                return icon
+        # Fallback to standard Qt icon if fallback_pixmap is specified
+        if fallback_pixmap is not None:
+            return QApplication.style().standardIcon(fallback_pixmap)
+        return QIcon()
+
+    def get_app_icon(self, names, app_name):
+        """Próbuje pobrać ikonę aplikacji z motywu, a w razie braku tworzy ładny awatar tekstowy."""
+        for name in names:
+            icon = QIcon.fromTheme(name)
+            if not icon.isNull():
+                return icon
+                
+        # Fallback: Generowanie płaskiego, estetycznego awatara z pierwszą literą nazwy
+        colors = [
+            "#1abc9c", "#2ecc71", "#3498db", "#9b59b6", "#34495e",
+            "#16a085", "#27ae60", "#2980b9", "#8e44ad", "#2c3e50",
+            "#f1c40f", "#e67e22", "#e74c3c", "#f39c12", "#d35400",
+            "#c0392b"
+        ]
+        # Prosty hash z nazwy aplikacji do wyboru koloru
+        color_idx = sum(ord(c) for c in app_name) % len(colors)
+        bg_color = QColor(colors[color_idx])
+        
+        img = QtGui.QImage(32, 32, QtGui.QImage.Format.Format_ARGB32)
+        img.fill(QtCore.Qt.GlobalColor.transparent)
+        
+        painter = QPainter(img)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Rysowanie zaokrąglonego tła
+        painter.setBrush(QBrush(bg_color))
+        painter.setPen(QtCore.Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(0, 0, 32, 32, 6, 6)
+        
+        # Rysowanie litery
+        painter.setPen(QColor("#ffffff"))
+        font = QFont("sans-serif", 13, QFont.Weight.Bold)
+        painter.setFont(font)
+        letter = app_name[0].upper() if app_name else "A"
+        painter.drawText(img.rect(), Qt.AlignmentFlag.AlignCenter, letter)
+        painter.end()
+        
+        return QIcon(QPixmap.fromImage(img))
+
+    # --- TAB 1: WELCOME PAGE ---
+    def create_welcome_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(20)
+        
+        # Header
+        header_layout = QVBoxLayout()
+        header_layout.setSpacing(5)
+        
+        lbl_header = QLabel("Witaj w PolonOS!")
+        lbl_header.setObjectName("tab_header")
+        header_layout.addWidget(lbl_header)
+        
+        lbl_sub = QLabel("Nowoczesna, stabilna i bezpieczna dystrybucja systemu operacyjnego.")
+        lbl_sub.setObjectName("tab_subtitle")
+        header_layout.addWidget(lbl_sub)
+        
+        layout.addLayout(header_layout)
+        
+        # Introduction text
+        lbl_desc = QLabel(
+            "Cieszymy się, że wybrałeś PolonOS. System ten został zaprojektowany z myślą o maksymalnej "
+            "wydajności i komforcie użytkowania. Poniższe centrum pomoże Ci skonfigurować system, "
+            "sprawdzić dostępność sterowników dla Twojego sprzętu oraz zainstalować najpopularniejsze oprogramowanie."
+        )
+        lbl_desc.setWordWrap(True)
+        lbl_desc.setStyleSheet("font-size: 13px; line-height: 1.5; color: #e4e4e7;")
+        layout.addWidget(lbl_desc)
+        
+        # Info Panel and Links Layout (Horizontal)
+        info_links_layout = QHBoxLayout()
+        info_links_layout.setSpacing(15)
+        
+        # Left Card: System Specifications
+        card_sys = QFrame()
+        card_sys.setObjectName("card")
+        card_sys_layout = QVBoxLayout(card_sys)
+        card_sys_layout.setContentsMargins(15, 15, 15, 15)
+        card_sys_layout.setSpacing(10)
+        
+        lbl_title_sys = QLabel("Informacje o systemie")
+        lbl_title_sys.setObjectName("card_title")
+        card_sys_layout.addWidget(lbl_title_sys)
+        
+        # Specs grid
+        grid = QGridLayout()
+        grid.setSpacing(8)
+        grid.setColumnMinimumWidth(0, 80)
+        
+        specs = [
+            ("Dystrybucja:", "PolonOS 1.0 LTS (KDE)"),
+            ("Jądro Linux:", get_kernel()),
+            ("Procesor:", get_cpu()),
+            ("Pamięć RAM:", get_ram()),
+        ]
+        
+        for row, (lbl, val) in enumerate(specs):
+            lbl_w = QLabel(lbl)
+            lbl_w.setObjectName("card_info_label")
+            grid.addWidget(lbl_w, row, 0)
+            
+            val_w = QLabel(val)
+            val_w.setObjectName("card_info_value")
+            val_w.setWordWrap(True)
+            grid.addWidget(val_w, row, 1)
+            
+        card_sys_layout.addLayout(grid)
+        card_sys_layout.addStretch()
+        
+        info_links_layout.addWidget(card_sys, 3)
+        
+        # Right Card: Network Status
+        self.card_net = QFrame()
+        self.card_net.setObjectName("card")
+        self.card_net_layout = QVBoxLayout(self.card_net)
+        self.card_net_layout.setContentsMargins(15, 15, 15, 15)
+        self.card_net_layout.setSpacing(10)
+        
+        net_header_layout = QHBoxLayout()
+        net_header_layout.setContentsMargins(0, 0, 0, 0)
+        
+        lbl_title_net = QLabel("Sieć")
+        lbl_title_net.setObjectName("card_title")
+        net_header_layout.addWidget(lbl_title_net)
+        
+        net_header_layout.addStretch()
+        
+        self.btn_refresh_net = QPushButton("Odśwież")
+        self.btn_refresh_net.setObjectName("secondary_button")
+        self.btn_refresh_net.setStyleSheet("padding: 4px 10px; font-size: 11px; min-width: 60px; border-radius: 6px;")
+        self.btn_refresh_net.setIcon(self.get_theme_icon(["view-refresh", "browser-reload"], QtWidgets.QStyle.StandardPixmap.SP_BrowserReload))
+        self.btn_refresh_net.clicked.connect(self.update_network_info)
+        net_header_layout.addWidget(self.btn_refresh_net)
+        
+        self.card_net_layout.addLayout(net_header_layout)
+        
+        self.net_content_widget = QWidget()
+        self.net_content_layout = QVBoxLayout(self.net_content_widget)
+        self.net_content_layout.setContentsMargins(0, 0, 0, 0)
+        self.net_content_layout.setSpacing(10)
+        self.card_net_layout.addWidget(self.net_content_widget)
+        
+        self.update_network_info()
+        
+        info_links_layout.addWidget(self.card_net, 2)
+        
+        layout.addLayout(info_links_layout)
+        
+        # Button under the side-by-side sections
+        btn_polonos_site = QPushButton("  Strona główna PolonOS")
+        btn_polonos_site.setObjectName("primary_button")
+        btn_polonos_site.setIcon(self.get_theme_icon(["applications-internet", "web-browser"], QtWidgets.QStyle.StandardPixmap.SP_MessageBoxQuestion))
+        btn_polonos_site.clicked.connect(lambda: QDesktopServices.openUrl(QtCore.QUrl("https://polonos.org")))
+        
+        layout.addWidget(btn_polonos_site, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addStretch()
+        
+        self.pages_stack.addWidget(page)
+
+    def update_network_info(self):
+        """Aktualizuje informacje o połączeniu sieciowym w widoku."""
+        if hasattr(self, 'btn_refresh_net'):
+            self.btn_refresh_net.setEnabled(False)
+            self.btn_refresh_net.setText("Odświeżanie...")
+            QApplication.processEvents()
+
+        for i in reversed(range(self.net_content_layout.count())):
+            item = self.net_content_layout.itemAt(i)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+            else:
+                layout = item.layout()
+                if layout is not None:
+                    for j in reversed(range(layout.count())):
+                        w = layout.itemAt(j).widget()
+                        if w is not None:
+                            w.deleteLater()
+                            
+        connected, conn_type, conn_name = get_network_info()
+        
+        if connected:
+            grid = QGridLayout()
+            grid.setSpacing(8)
+            grid.setColumnMinimumWidth(0, 90)
+            
+            lbl_status_title = QLabel("Status:")
+            lbl_status_title.setObjectName("card_info_label")
+            grid.addWidget(lbl_status_title, 0, 0)
+            
+            lbl_status_val = QLabel("Połączono")
+            lbl_status_val.setStyleSheet("color: #2ecc71; font-weight: bold; font-size: 13px;")
+            grid.addWidget(lbl_status_val, 0, 1)
+            
+            lbl_type_title = QLabel("Połączenie:")
+            lbl_type_title.setObjectName("card_info_label")
+            grid.addWidget(lbl_type_title, 1, 0)
+            
+            lbl_type_val = QLabel(conn_type)
+            lbl_type_val.setObjectName("card_info_value")
+            grid.addWidget(lbl_type_val, 1, 1)
+            
+            lbl_name_title = QLabel("Nazwa sieci:")
+            lbl_name_title.setObjectName("card_info_label")
+            grid.addWidget(lbl_name_title, 2, 0)
+            
+            lbl_name_val = QLabel(conn_name)
+            lbl_name_val.setObjectName("card_info_value")
+            lbl_name_val.setWordWrap(True)
+            grid.addWidget(lbl_name_val, 2, 1)
+            
+            self.net_content_layout.addLayout(grid)
+            self.net_content_layout.addStretch()
+        else:
+            grid = QGridLayout()
+            grid.setSpacing(8)
+            grid.setColumnMinimumWidth(0, 90)
+            
+            lbl_status_title = QLabel("Status:")
+            lbl_status_title.setObjectName("card_info_label")
+            grid.addWidget(lbl_status_title, 0, 0)
+            
+            lbl_status_val = QLabel("Brak połączenia")
+            lbl_status_val.setStyleSheet("color: #e74c3c; font-weight: bold; font-size: 13px;")
+            grid.addWidget(lbl_status_val, 0, 1)
+            self.net_content_layout.addLayout(grid)
+            
+            lbl_warning = QLabel(
+                "Brak połączenia z internetem. Bez aktywnego połączenia nie skorzystasz z żadnej opcji tej aplikacji, "
+                "w tym z instalatora sterowników, aktualizacji systemowych oraz instalatora programów."
+            )
+            lbl_warning.setWordWrap(True)
+            lbl_warning.setStyleSheet("color: #f39c12; font-size: 12px; line-height: 1.4; margin-top: 5px;")
+            self.net_content_layout.addWidget(lbl_warning)
+            self.net_content_layout.addStretch()
+
+        if hasattr(self, 'btn_refresh_net'):
+            self.btn_refresh_net.setEnabled(True)
+            self.btn_refresh_net.setText("Odśwież")
+
+    # --- TAB 2: HARDWARE DRIVERS PAGE ---
+    def create_drivers_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(15)
+        
+        # Header
+        header_layout = QVBoxLayout()
+        header_layout.setSpacing(5)
+        
+        lbl_header = QLabel("Sterowniki i aktualizacje")
+        lbl_header.setObjectName("tab_header")
+        header_layout.addWidget(lbl_header)
+        
+        lbl_sub = QLabel("Wykrywanie sprzętu i zalecanych sterowników własnościowych.")
+        lbl_sub.setObjectName("tab_subtitle")
+        header_layout.addWidget(lbl_sub)
+        
+        layout.addLayout(header_layout)
+        
+        # Action controls row
+        actions_layout = QHBoxLayout()
+        actions_layout.setSpacing(10)
+        
+        self.btn_check_drivers = QPushButton(" Sprawdź dostępność sterowników i aktualizacji")
+        self.btn_check_drivers.setObjectName("secondary_button")
+        self.btn_check_drivers.setIcon(self.get_theme_icon(["view-refresh", "system-search", "hwinfo"], QtWidgets.QStyle.StandardPixmap.SP_BrowserReload))
+        self.btn_check_drivers.clicked.connect(self.start_hardware_check)
+        actions_layout.addWidget(self.btn_check_drivers)
+        
+        # Active progress spinner-like indicator
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0) # Indeterminate mode
+        self.progress_bar.setFixedHeight(8)
+        self.progress_bar.setVisible(False)
+        
+        actions_layout.addStretch()
+        layout.addLayout(actions_layout)
+        layout.addWidget(self.progress_bar)
+        
+        # Output console (dark style)
+        self.console_output = QPlainTextEdit()
+        self.console_output.setObjectName("console_log")
+        self.console_output.setReadOnly(True)
+        self.console_output.setPlainText("Kliknij przycisk powyżej, aby rozpocząć skanowanie sprzętu...")
+        layout.addWidget(self.console_output)
+        
+        # Bottom install row
+        self.btn_install_drivers = QPushButton(" Zainstaluj zalecane sterowniki")
+        self.btn_install_drivers.setObjectName("primary_button")
+        self.btn_install_drivers.setIcon(self.get_theme_icon(["preferences-system-drivers", "system-run", "dialog-ok"], QtWidgets.QStyle.StandardPixmap.SP_DialogApplyButton))
+        self.btn_install_drivers.setEnabled(False)
+        self.btn_install_drivers.clicked.connect(self.install_recommended_drivers)
+        
+        layout.addWidget(self.btn_install_drivers, alignment=Qt.AlignmentFlag.AlignRight)
+        
+        self.recommended_drivers = []
+        self.pages_stack.addWidget(page)
+        
+    def start_hardware_check(self):
+        """Starts hardware scanning thread."""
+        self.btn_check_drivers.setEnabled(False)
+        self.btn_install_drivers.setEnabled(False)
+        self.console_output.clear()
+        self.progress_bar.setVisible(True)
+        self.recommended_drivers = []
+        
+        self.check_thread = HardwareCheckThread()
+        self.check_thread.progress_signal.connect(self.console_output.appendPlainText)
+        self.check_thread.drivers_recommend_signal.connect(self.on_drivers_recommend_found)
+        self.check_thread.finished_signal.connect(self.on_hardware_check_finished)
+        self.check_thread.start()
+        
+    def on_drivers_recommend_found(self, recommendations):
+        self.recommended_drivers = recommendations
+        
+    def on_hardware_check_finished(self):
+        self.progress_bar.setVisible(False)
+        self.btn_check_drivers.setEnabled(True)
+        
+        # Check if NVIDIA driver is recommended and prompt user
+        if "nvidia" in self.recommended_drivers:
+            stable_ver = getattr(self.check_thread, 'nvidia_stable_ver', None)
+            latest_ver = getattr(self.check_thread, 'nvidia_latest_ver', None)
+            dialog = NvidiaDriverDialog(stable_ver, latest_ver, self)
+            if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+                self.nvidia_choice = dialog.get_choice()
+            else:
+                self.nvidia_choice = "stable"
+                
+            if self.nvidia_choice == "latest":
+                self.console_output.appendPlainText("\n[Wybór użytkownika] Wybrano instalację najnowszych sterowników NVIDIA z oficjalnego repozytorium producenta.")
+            else:
+                self.console_output.appendPlainText("\n[Wybór użytkownika] Wybrano instalację stabilnych sterowników NVIDIA z repozytorium dystrybucji.")
+        
+        # Enable installer button if we found NVIDIA, Broadcom drivers or Updates
+        if self.recommended_drivers:
+            self.btn_install_drivers.setEnabled(True)
+        else:
+            self.console_output.appendPlainText("\n[Informacja] Brak specyficznych pakietów do zainstalowania. Twój system jest aktualny i zoptymalizowany.")
+            
+    def install_recommended_drivers(self):
+        """Launches graphical ProgressDialog to install recommended drivers using pkexec."""
+        if not self.recommended_drivers:
+            return
+            
+        cache_dir = os.path.expanduser("~/.cache/polonos-welcome")
+        os.makedirs(cache_dir, exist_ok=True)
+        script_path = os.path.join(cache_dir, "install_drivers.sh")
+        
+        # Build driver installation script contents
+        script_content = """#!/bin/bash
+# PolonOS Driver Installer Script
+
+export DEBIAN_FRONTEND=noninteractive
+
+RED='\\033[0;31m'
+GREEN='\\033[0;32m'
+YELLOW='\\033[1;33m'
+BLUE='\\033[0;34m'
+NC='\\033[0m'
+
+echo -e "${BLUE}==================================================${NC}"
+echo -e "${BLUE}        Instalacja Sterowników PolonOS            ${NC}"
+echo -e "${BLUE}==================================================${NC}"
+echo ""
+"""
+        if "nvidia" in self.recommended_drivers:
+            if getattr(self, 'nvidia_choice', 'stable') == 'latest':
+                script_content += """
+echo -e "${YELLOW}[*] Wykryto GPU Nvidia. Przygotowywanie instalacji najnowszych sterowników własnościowych...${NC}"
+echo -e "${YELLOW}[*] Dodawanie oficjalnego klucza i repozytorium sieciowego NVIDIA...${NC}"
+wget -O /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb || curl -L -o /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb
+if [ $? -eq 0 ]; then
+    dpkg -i /tmp/cuda-keyring.deb
+    apt-get -o DPkg::Lock::Timeout=60 update
+    echo -e "${YELLOW}[*] Instalacja najnowszych sterowników NVIDIA z oficjalnego repozytorium...${NC}"
+    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-kernel-dkms
+else
+    echo -e "${RED}[!] Nie udało się pobrać klucza repozytorium NVIDIA. Próba instalacji sterownika stabilnego...${NC}"
+    apt-get -o DPkg::Lock::Timeout=60 update
+    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-kernel-dkms
+fi
+"""
+            else:
+                script_content += """
+echo -e "${YELLOW}[*] Wykryto GPU Nvidia. Instalacja stabilnych sterowników własnościowych...${NC}"
+if command -v ubuntu-drivers &> /dev/null; then
+    ubuntu-drivers install
+else
+    apt-get -o DPkg::Lock::Timeout=60 update
+    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-kernel-dkms
+fi
+"""
+        if "broadcom" in self.recommended_drivers:
+            script_content += """
+echo -e "${YELLOW}[*] Wykryto kartę Wi-Fi Broadcom. Instalacja sterownika jądra...${NC}"
+apt-get -o DPkg::Lock::Timeout=60 update
+apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" bcmwl-kernel-source
+"""
+        if "updates" in self.recommended_drivers:
+            script_content += """
+echo -e "${YELLOW}[*] Instalacja dostępnych aktualizacji systemowych...${NC}"
+apt-get -o DPkg::Lock::Timeout=60 update
+apt-get upgrade -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+"""
+
+        script_content += """
+echo ""
+echo -e "${GREEN}==================================================${NC}"
+echo -e "${GREEN}      Proces instalacji zakończony pomyślnie!      ${NC}"
+echo -e "${GREEN}==================================================${NC}"
+echo ""
+echo "Zalecane jest ponowne uruchomienie komputera w celu załadowania modułów."
+"""
+        try:
+            with open(script_path, "w", encoding="utf-8") as f:
+                f.write(script_content)
+            os.chmod(script_path, 0o755)
+            
+            # Execute in graphical ProgressDialog using pkexec
+            dialog = ProgressDialog("Instalacja Sterowników", "pkexec", ["bash", script_path], self)
+            dialog.exec()
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Błąd instalacji", f"Nie można wywołać instalatora: {e}")
+
+    # --- TAB 3: SOFTWARE MARKETPLACE PAGE ---
+    def create_software_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        
+        # Header without Logo
+        header_widget = QWidget()
+        header_widget_layout = QHBoxLayout(header_widget)
+        header_widget_layout.setContentsMargins(0, 0, 0, 0)
+        header_widget_layout.setSpacing(15)
+        
+        header_text_layout = QVBoxLayout()
+        header_text_layout.setSpacing(5)
+        
+        lbl_header = QLabel("Instalator aplikacji")
+        lbl_header.setObjectName("tab_header")
+        header_text_layout.addWidget(lbl_header)
+        
+        lbl_sub = QLabel("Wybierz aplikacje do zainstalowania z repozytoriów Flatpak (Flathub) oraz APT.")
+        lbl_sub.setObjectName("tab_subtitle")
+        header_text_layout.addWidget(lbl_sub)
+        
+        header_widget_layout.addLayout(header_text_layout)
+        header_widget_layout.addStretch()
+        
+        layout.addWidget(header_widget)
+        
+        # Scroll Area for apps list
+        scroll = QScrollArea()
+        scroll.setObjectName("scroll_area")
+        scroll.setWidgetResizable(True)
+        
+        scroll_widget = QWidget()
+        scroll_widget.setObjectName("scroll_content")
+        scroll_layout = QVBoxLayout(scroll_widget)
+        scroll_layout.setContentsMargins(0, 5, 10, 5)
+        scroll_layout.setSpacing(15)
+        
+        # Define Software list structured by categories
+        self.software_categories = {
+            "Biuro": [
+                {
+                    "id": "org.libreoffice.LibreOffice",
+                    "name": "LibreOffice",
+                    "desc": "Pełny, nowoczesny pakiet biurowy zintegrowany ze środowiskiem graficznym KDE Plasma.",
+                    "type": "flatpak",
+                    "icons": ["libreoffice-main", "org.libreoffice.LibreOffice", "applications-office"]
+                }
+            ],
+            "Internet": [
+                {
+                    "id": "com.google.Chrome",
+                    "name": "Google Chrome",
+                    "desc": "Popularna i szybka przeglądarka internetowa od firmy Google.",
+                    "type": "flatpak",
+                    "icons": ["google-chrome", "com.google.Chrome", "browser"]
+                },
+                {
+                    "id": "org.mozilla.firefox",
+                    "name": "Mozilla Firefox",
+                    "desc": "Bezpieczna i dbająca o prywatność przeglądarka internetowa o otwartym kodzie źródłowym.",
+                    "type": "flatpak",
+                    "icons": ["firefox", "org.mozilla.firefox", "browser"]
+                }
+            ],
+            "Multimedia & Grafika": [
+                {
+                    "id": "org.videolan.VLC",
+                    "name": "VLC Media Player",
+                    "desc": "Uniwersalny odtwarzacz multimediów obsługujący większość formatów audio i wideo.",
+                    "type": "flatpak",
+                    "icons": ["vlc", "org.videolan.VLC", "applications-multimedia"]
+                },
+                {
+                    "id": "com.obsproject.Studio",
+                    "name": "OBS Studio",
+                    "desc": "Profesjonalny program do nagrywania pulpitu, przechwytywania wideo oraz streamingu.",
+                    "type": "flatpak",
+                    "icons": ["obs", "com.obsproject.Studio", "applications-multimedia"]
+                },
+                {
+                    "id": "org.gimp.GIMP",
+                    "name": "GIMP",
+                    "desc": "Zaawansowany i bezpłatny program do edycji, retuszu i tworzenia grafiki rastrowej.",
+                    "type": "flatpak",
+                    "icons": ["gimp", "org.gimp.GIMP", "applications-graphics"]
+                }
+            ],
+            "Edukacja & Narzędzia": [
+                {
+                    "id": "kdeedu",
+                    "name": "Pakiet Edukacyjny PolonOS (KDE Edu)",
+                    "desc": "Zestaw programów dydaktycznych, gier edukacyjnych oraz narzędzi wspomagających naukę najmłodszych.",
+                    "type": "apt",
+                    "icons": ["applications-education", "system-run", "education-science"]
+                },
+                {
+                    "id": "org.kde.kate",
+                    "name": "Kate Text Editor",
+                    "desc": "Potężny, zaawansowany i rozszerzalny edytor tekstu i kodu z podświetlaniem składni od KDE.",
+                    "type": "flatpak",
+                    "icons": ["kate", "org.kde.kate", "accessories-text-editor"]
+                }
+            ],
+            "Rozrywka": [
+                {
+                    "id": "com.valvesoftware.Steam",
+                    "name": "Steam",
+                    "desc": "Największa cyfrowa platforma dystrybucji gier kompatybilna z technologią Proton.",
+                    "type": "flatpak",
+                    "icons": ["steam", "com.valvesoftware.Steam", "applications-games"]
+                },
+                {
+                    "id": "com.heroicgameslauncher.hgl",
+                    "name": "Heroic Games Launcher",
+                    "desc": "Alternatywny program startowy dla gier z Epic Games Store, GOG i Prime Gaming.",
+                    "type": "flatpak",
+                    "icons": ["com.heroicgameslauncher.hgl", "applications-games"]
+                },
+                {
+                    "id": "winehq-stable",
+                    "name": "Wine Compatibility Layer",
+                    "desc": "Warstwa zgodności pozwalająca na uruchamianie aplikacji i gier z systemu Windows.",
+                    "type": "apt",
+                    "icons": ["wine", "wine-glass", "system-run-symbolic"]
+                },
+                {
+                    "id": "kdegames",
+                    "name": "Pakiet Gier PolonOS (KDE Games)",
+                    "desc": "Kolekcja klasycznych gier logicznych, pasjansów i zręcznościowych dla całej rodziny.",
+                    "type": "apt",
+                    "icons": ["applications-games", "input-gaming", "games-config"]
+                }
+            ]
+        }
+        
+        # Save reference to checkbox elements
+        self.app_checkboxes = {}
+        self.app_badges = {}
+        
+        # Build category containers dynamically
+        for category, apps in self.software_categories.items():
+            category_layout = QVBoxLayout()
+            category_layout.setSpacing(8)
+            
+            # Category title
+            lbl_cat_title = QLabel(category)
+            lbl_cat_title.setStyleSheet("font-size: 15px; color: #38bdf8; margin-top: 10px;")
+            category_layout.addWidget(lbl_cat_title)
+            
+            # Category Apps List
+            for app in apps:
+                app_frame = QFrame()
+                app_frame.setObjectName("app_row")
+                app_row_layout = QHBoxLayout(app_frame)
+                app_row_layout.setContentsMargins(10, 10, 15, 10)
+                app_row_layout.setSpacing(12)
+                
+                # Checkbox (no text label, handled manually)
+                chk = QCheckBox()
+                chk.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+                self.app_checkboxes[app["id"]] = (chk, app)
+                app_row_layout.addWidget(chk)
+                
+                # App Icon
+                lbl_icon = QLabel()
+                icon = self.get_app_icon(app["icons"], app["name"])
+                lbl_icon.setPixmap(icon.pixmap(32, 32))
+                lbl_icon.setFixedSize(32, 32)
+                app_row_layout.addWidget(lbl_icon)
+                
+                # Text descriptions (VBox)
+                text_layout = QVBoxLayout()
+                text_layout.setSpacing(2)
+                
+                lbl_name = QLabel(app["name"])
+                lbl_name.setStyleSheet("font-size: 13px; color: #ffffff;")
+                text_layout.addWidget(lbl_name)
+                
+                lbl_desc = QLabel(app["desc"])
+                lbl_desc.setStyleSheet("font-size: 11px; color: #a1a1aa;")
+                lbl_desc.setWordWrap(True)
+                text_layout.addWidget(lbl_desc)
+                
+                app_row_layout.addLayout(text_layout, 1)
+                
+                # Badge representing package source (SYSTEM or FLATPAK)
+                lbl_badge = QLabel("SYSTEM" if app["type"] == "apt" else "FLATPAK")
+                if app["type"] == "apt":
+                    lbl_badge.setStyleSheet(
+                        "background-color: rgba(46, 204, 113, 0.2); "
+                        "color: #2ecc71; "
+                        "border: 1px solid #2ecc71; "
+                        "border-radius: 4px; "
+                        "padding: 3px 8px; "
+                        "font-size: 9px;"
+                    )
+                else:
+                    lbl_badge.setStyleSheet(
+                        "background-color: rgba(56, 189, 248, 0.2); "
+                        "color: #38bdf8; "
+                        "border: 1px solid #38bdf8; "
+                        "border-radius: 4px; "
+                        "padding: 3px 8px; "
+                        "font-size: 9px;"
+                    )
+                lbl_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                app_row_layout.addWidget(lbl_badge)
+                self.app_badges[app["id"]] = lbl_badge
+                
+                category_layout.addWidget(app_frame)
+                
+            scroll_layout.addLayout(category_layout)
+            
+        scroll_layout.addStretch()
+        scroll.setWidget(scroll_widget)
+        layout.addWidget(scroll)
+        
+        # Install Button
+        self.btn_install_software = QPushButton(" Zainstaluj zaznaczone programy")
+        self.btn_install_software.setObjectName("primary_button")
+        self.btn_install_software.setIcon(self.get_theme_icon(["system-software-install", "dialog-ok"], QtWidgets.QStyle.StandardPixmap.SP_DialogApplyButton))
+        self.btn_install_software.clicked.connect(self.install_selected_software)
+        
+        layout.addWidget(self.btn_install_software, alignment=Qt.AlignmentFlag.AlignRight)
+        self.update_software_statuses()
+        self.pages_stack.addWidget(page)
+        
+    def update_software_statuses(self):
+        """Aktualizuje stany checkboxów i etykiet 'SYSTEM' / 'FLATPAK' / 'zainstalowano'."""
+        for app_id, (chk, app) in self.app_checkboxes.items():
+            badge = self.app_badges.get(app_id)
+            if is_app_installed(app_id, app.get("type", "apt")):
+                chk.setChecked(False)
+                chk.setEnabled(False)
+                if badge:
+                    badge.setText("zainstalowano")
+                    badge.setStyleSheet(
+                        "background-color: rgba(148, 163, 184, 0.15); "
+                        "color: #94a3b8; "
+                        "border: 1px solid #475569; "
+                        "border-radius: 4px; "
+                        "padding: 3px 8px; "
+                        "font-size: 9px;"
+                    )
+            else:
+                chk.setEnabled(True)
+                if badge:
+                    if app.get("type") == "apt":
+                        badge.setText("SYSTEM")
+                        badge.setStyleSheet(
+                            "background-color: rgba(46, 204, 113, 0.2); "
+                            "color: #2ecc71; "
+                            "border: 1px solid #2ecc71; "
+                            "border-radius: 4px; "
+                            "padding: 3px 8px; "
+                            "font-size: 9px;"
+                        )
+                    else:
+                        badge.setText("FLATPAK")
+                        badge.setStyleSheet(
+                            "background-color: rgba(56, 189, 248, 0.2); "
+                            "color: #38bdf8; "
+                            "border: 1px solid #38bdf8; "
+                            "border-radius: 4px; "
+                            "padding: 3px 8px; "
+                            "font-size: 9px;"
+                        )
+
+    def install_selected_software(self):
+        """Collects IDs and spawns ProgressDialog to run the install script graphically."""
+        selected_apt = []
+        selected_flatpak = []
+        
+        for app_id, (chk, app) in self.app_checkboxes.items():
+            if chk.isChecked():
+                if app.get("type") == "apt":
+                    selected_apt.append(app_id)
+                elif app.get("type") == "flatpak":
+                    selected_flatpak.append(app_id)
+                     
+        if not selected_apt and not selected_flatpak:
+            QtWidgets.QMessageBox.warning(self, "Brak zaznaczenia", "Proszę zaznaczyć przynajmniej jeden program do instalacji.")
+            return
+            
+        cache_dir = os.path.expanduser("~/.cache/polonos-welcome")
+        os.makedirs(cache_dir, exist_ok=True)
+        script_path = os.path.join(cache_dir, "install_software.sh")
+        
+        # Formatting python arrays into bash arrays
+        apt_array = " ".join([f'"{pkg}"' for pkg in selected_apt])
+        flatpak_array = " ".join([f'"{pkg}"' for pkg in selected_flatpak])
+        
+        script_content = f"""#!/bin/bash
+# PolonOS Software Installer Script
+
+export DEBIAN_FRONTEND=noninteractive
+
+RED='\\033[0;31m'
+GREEN='\\033[0;32m'
+YELLOW='\\033[1;33m'
+BLUE='\\033[0;34m'
+NC='\\033[0m'
+
+echo -e "${{BLUE}}==================================================${{NC}}"
+echo -e "${{BLUE}}        Instalacja Oprogramowania PolonOS         ${{NC}}"
+echo -e "${{BLUE}}==================================================${{NC}}"
+echo ""
+
+APT_PACKAGES=({apt_array})
+FLATPAK_PACKAGES=({flatpak_array})
+
+# 1. Instalacja pakietów APT
+if [ ${{#APT_PACKAGES[@]}} -gt 0 ]; then
+    # Jesli instalujemy wine, wlaczenie architektury i386
+    if [[ " ${{APT_PACKAGES[*]}} " =~ " winehq-stable " ]]; then
+        if ! dpkg --print-foreign-architectures | grep -q "i386"; then
+            echo -e "${{YELLOW}}[*] Włączanie architektury 32-bit (i386) dla Wine...${{NC}}"
+            dpkg --add-architecture i386
+        fi
+    fi
+
+    echo -e "${{YELLOW}}Sprawdzanie i aktualizowanie list pakietów...${{NC}}"
+    apt-get -o DPkg::Lock::Timeout=60 update
+    UPDATE_STATUS=$?
+    if [ $UPDATE_STATUS -ne 0 ]; then
+        echo -e "${{YELLOW}}[!] Ostrzeżenie: Aktualizacja list pakietów nie powiodła się w pełni (kod: $UPDATE_STATUS).${{NC}}"
+        echo -e "${{YELLOW}}    Upewnij się, że masz stabilne połączenie sieciowe.${{NC}}"
+    fi
+
+    echo -e "${{YELLOW}}Próba zbiorczej instalacji pakietów APT: ${{APT_PACKAGES[*]}}...${{NC}}"
+    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" "${{APT_PACKAGES[@]}}"
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${{GREEN}}Pakiety APT zostały zainstalowane pomyślnie!${{NC}}"
+    else
+        echo -e "${{RED}}[!] Zbiorcza instalacja APT nie powiodła się. Przechodzenie do instalacji pojedynczej...${{NC}}"
+        
+        FAILED_APT=()
+        for pkg in "${{APT_PACKAGES[@]}}"; do
+            echo -e "${{YELLOW}}[*] Instalowanie pakietu: $pkg...${{NC}}"
+            apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" "$pkg"
+            if [ $? -eq 0 ]; then
+                echo -e "${{GREEN}}[+] Pakiet $pkg zainstalowany pomyślnie.${{NC}}"
+            else
+                echo -e "${{RED}}[-] Nie udało się zainstalować pakietu $pkg.${{NC}}"
+                FAILED_APT+=("$pkg")
+            fi
+        done
+    fi
+fi
+
+# 2. Instalacja pakietów Flatpak
+if [ ${{#FLATPAK_PACKAGES[@]}} -gt 0 ]; then
+    # Sprawdzenie czy flatpak jest zainstalowany
+    if ! command -v flatpak &> /dev/null; then
+        echo -e "${{YELLOW}}[*] Instalowanie menedżera Flatpak...${{NC}}"
+        apt-get install -y -o DPkg::Lock::Timeout=60 flatpak
+    fi
+
+    # Dodanie repozytorium Flathub
+    echo -e "${{YELLOW}}[*] Dodawanie repozytorium Flathub (system)...${{NC}}"
+    flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+    # Instalacja pakietów Flatpak
+    for pkg in "${{FLATPAK_PACKAGES[@]}}"; do
+        echo -e "${{YELLOW}}[*] Instalowanie aplikacji Flatpak: $pkg...${{NC}}"
+        flatpak install -y --system flathub "$pkg"
+        if [ $? -eq 0 ]; then
+            echo -e "${{GREEN}}[+] Aplikacja $pkg zainstalowana pomyślnie.${{NC}}"
+
+            # Steam wymaga pakietu steam-devices (reguły udev dla kontrolerów/gamepadów)
+            if [ "$pkg" = "com.valvesoftware.Steam" ]; then
+                echo -e "${{YELLOW}}[*] Instalowanie pakietu systemowego steam-devices (reguły udev)...${{NC}}"
+                apt-get install -y -o DPkg::Lock::Timeout=60 steam-devices 2>/dev/null
+                if [ $? -eq 0 ]; then
+                    echo -e "${{GREEN}}[+] Pakiet steam-devices zainstalowany — kontrolery będą działać poprawnie.${{NC}}"
+                else
+                    echo -e "${{YELLOW}}[!] Nie udało się zainstalować steam-devices. Kontrolery mogą wymagać ręcznej konfiguracji.${{NC}}"
+                fi
+            fi
+        else
+            echo -e "${{RED}}[-] Nie udało się zainstalować aplikacji $pkg.${{NC}}"
+        fi
+    done
+fi
+
+echo ""
+echo -e "${{GREEN}}==================================================${{NC}}"
+echo -e "${{GREEN}}      Proces instalacji zakończony!              ${{NC}}"
+echo -e "${{GREEN}}==================================================${{NC}}"
+echo ""
+"""
+        try:
+            with open(script_path, "w", encoding="utf-8") as f:
+                f.write(script_content)
+            os.chmod(script_path, 0o755)
+            
+            # Execute script in graphical ProgressDialog using pkexec
+            dialog = ProgressDialog("Instalacja Programów", "pkexec", ["bash", script_path], self)
+            dialog.exec()
+            
+            # Mark successfully installed apps
+            for app_id, (chk, app) in self.app_checkboxes.items():
+                if chk.isChecked():
+                    if is_app_installed(app_id, app.get("type", "apt")):
+                        mark_app_as_installed(app_id)
+            
+            # Update statuses after installation completes
+            self.update_software_statuses()
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Błąd instalacji", f"Nie można wywołać instalatora: {e}")
+
+    # --- AUTOSTART TRIGGER ---
+    def on_autostart_toggled(self, checked):
+        set_autostart_enabled(checked)
+
+# --- APPLICATION ENTRY POINT ---
+def main():
+    # Force platform-independent configurations to ignore system theme integrations
+    os.environ["QT_QPA_PLATFORMTHEME"] = ""
+    os.environ["QT_STYLE_OVERRIDE"] = ""
+    
+    app = QApplication(sys.argv)
+    app.setDesktopFileName("polonos-welcome")
+    
+    # Force Fusion style
+    app.setStyle("Fusion")
+    
+    # Setup custom dark palette matching the premium deep space navy style
+    # to make the app's colors completely independent of the system theme settings
+    palette = QtGui.QPalette()
+    bg_color = QColor(11, 15, 23)       # #0b0f17
+    card_color = QColor(19, 27, 46)     # #131b2e
+    text_color = QColor(248, 250, 252)   # #f8fafc
+    base_color = QColor(15, 23, 42)     # #0f172a
+    highlight_color = QColor(56, 189, 248) # #38bdf8
+    disabled_bg = QColor(11, 15, 23)
+    disabled_text = QColor(100, 116, 139) # #64748b
+    
+    # Active state
+    palette.setColor(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Window, bg_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.WindowText, text_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Base, base_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.AlternateBase, bg_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.ToolTipBase, text_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.ToolTipText, base_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Text, text_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Button, card_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.ButtonText, text_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.BrightText, Qt.GlobalColor.white)
+    palette.setColor(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Link, highlight_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Highlight, highlight_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.HighlightedText, Qt.GlobalColor.white)
+    
+    # Inactive state
+    palette.setColor(QtGui.QPalette.ColorGroup.Inactive, QtGui.QPalette.ColorRole.Window, bg_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Inactive, QtGui.QPalette.ColorRole.WindowText, text_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Inactive, QtGui.QPalette.ColorRole.Base, base_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Inactive, QtGui.QPalette.ColorRole.AlternateBase, bg_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Inactive, QtGui.QPalette.ColorRole.ToolTipBase, text_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Inactive, QtGui.QPalette.ColorRole.ToolTipText, base_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Inactive, QtGui.QPalette.ColorRole.Text, text_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Inactive, QtGui.QPalette.ColorRole.Button, card_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Inactive, QtGui.QPalette.ColorRole.ButtonText, text_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Inactive, QtGui.QPalette.ColorRole.BrightText, Qt.GlobalColor.white)
+    palette.setColor(QtGui.QPalette.ColorGroup.Inactive, QtGui.QPalette.ColorRole.Link, highlight_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Inactive, QtGui.QPalette.ColorRole.Highlight, highlight_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Inactive, QtGui.QPalette.ColorRole.HighlightedText, Qt.GlobalColor.white)
+    
+    # Disabled state
+    palette.setColor(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.Window, disabled_bg)
+    palette.setColor(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.WindowText, disabled_text)
+    palette.setColor(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.Base, disabled_bg)
+    palette.setColor(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.AlternateBase, disabled_bg)
+    palette.setColor(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.ToolTipBase, text_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.ToolTipText, base_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.Text, disabled_text)
+    palette.setColor(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.Button, disabled_bg)
+    palette.setColor(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.ButtonText, disabled_text)
+    palette.setColor(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.BrightText, Qt.GlobalColor.white)
+    palette.setColor(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.Link, highlight_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.Highlight, highlight_color)
+    palette.setColor(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.HighlightedText, Qt.GlobalColor.white)
+    
+    app.setPalette(palette)
+    
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()
