@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=PolonOS Net Monitor
+Comment=Monitorowanie prędkości pobierania i wysyłania danych
+Exec=polonosnetmonitor
+Icon=network-workgroup
+Terminal=false
+Categories=System;Monitor;
+X-KDE-StartupNotify=true

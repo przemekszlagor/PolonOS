@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PolonOSNetMonitor</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Brand & Connection Header -->
+            <header class="main-header">
+                <div class="brand">
+                    <img src="polonos-logo.png" class="brand-logo" alt="PolonOS Logo">
+                    <div class="brand-text">
+                        <h2>PolonOSNetMonitor</h2>
+                        <p class="brand-sub">Bieżący ruch i parametry sieciowe</p>
+                    </div>
+                </div>
+                <div class="connection-pill offline" id="connection-status-pill">
+                    <span class="status-dot"></span>
+                    <span id="connection-status-text">Brak sieci</span>
+                </div>
+            </header>
+
+            <!-- Network Parameters Cards -->
+            <section class="top-bar">
+                <div class="info-card">
+                    <div class="info-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M5 12.55a11 11 0 0 1 14.08 0" stroke-linecap="round"/>
+                            <path d="M1.42 9a16 16 0 0 1 21.16 0" stroke-linecap="round"/>
+                            <path d="M8.53 16.11a6 6 0 0 1 6.95 0" stroke-linecap="round"/>
+                            <circle cx="12" cy="20" r="1"/>
+                        </svg>
+                    </div>
+                    <div class="info-text">
+                        <span class="info-label">Połączenie</span>
+                        <span class="info-value" id="net-type">Wyszukiwanie...</span>
+                    </div>
+                </div>
+                
+                <div class="info-card">
+                    <div class="info-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+                            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+                            <line x1="6" y1="6" x2="6.01" y2="6"/>
+                            <line x1="6" y1="18" x2="6.01" y2="18"/>
+                        </svg>
+                    </div>
+                    <div class="info-text">
+                        <span class="info-label">Interfejs sieciowy</span>
+                        <span class="info-value" id="net-interface">-</span>
+                    </div>
+                </div>
+                
+                <div class="info-card">
+                    <div class="info-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                        </svg>
+                    </div>
+                    <div class="info-text">
+                        <span class="info-label">Lokalny adres IP</span>
+                        <span class="info-value" id="net-local-ip">Pobieranie...</span>
+                    </div>
+                </div>
+                
+                <div class="info-card">
+                    <div class="info-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                    </div>
+                    <div class="info-text">
+                        <span class="info-label">Publiczny adres IP</span>
+                        <span class="info-value" id="net-ip">Pobieranie...</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Dashboard Tab (Realtime stats) -->
+            <section class="tab-content active">
+                <div class="dashboard-grid">
+                    <!-- Download Card -->
+                    <div class="speed-gauge-card download">
+                        <div class="gauge-header">
+                            <h3>POBIERANIE</h3>
+                            <div class="trend-badge down">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5">
+                                    <line x1="12" y1="5" x2="12" y2="19"/>
+                                    <polyline points="19 12 12 19 5 12"/>
+                                </svg>
+                                <span>Download</span>
+                            </div>
+                        </div>
+                        
+                        <div class="gauge-body">
+                            <div class="svg-gauge-container">
+                                <svg width="180" height="180" viewBox="0 0 100 100">
+                                    <circle class="gauge-bg" cx="50" cy="50" r="42"/>
+                                    <circle class="gauge-progress download" cx="50" cy="50" r="42" id="gauge-down-ring" stroke-dasharray="264" stroke-dashoffset="264"/>
+                                </svg>
+                                <div class="gauge-text-center">
+                                    <span class="gauge-val" id="realtime-down-val">0.0</span>
+                                    <span class="gauge-unit" id="realtime-down-unit">Mb/s</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="gauge-footer">
+                            <div class="session-stat">
+                                <span class="stat-lbl">Pobrano w tej sesji</span>
+                                <span class="stat-val" id="session-rx">0.0 MB</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Upload Card -->
+                    <div class="speed-gauge-card upload">
+                        <div class="gauge-header">
+                            <h3>WYSYŁANIE</h3>
+                            <div class="trend-badge up">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5">
+                                    <line x1="12" y1="19" x2="12" y2="5"/>
+                                    <polyline points="5 12 12 5 19 12"/>
+                                </svg>
+                                <span>Upload</span>
+                            </div>
+                        </div>
+                        
+                        <div class="gauge-body">
+                            <div class="svg-gauge-container">
+                                <svg width="180" height="180" viewBox="0 0 100 100">
+                                    <circle class="gauge-bg" cx="50" cy="50" r="42"/>
+                                    <circle class="gauge-progress upload" cx="50" cy="50" r="42" id="gauge-up-ring" stroke-dasharray="264" stroke-dashoffset="264"/>
+                                </svg>
+                                <div class="gauge-text-center">
+                                    <span class="gauge-val" id="realtime-up-val">0.0</span>
+                                    <span class="gauge-unit" id="realtime-up-unit">Mb/s</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="gauge-footer">
+                            <div class="session-stat">
+                                <span class="stat-lbl">Wysłano w tej sesji</span>
+                                <span class="stat-val" id="session-tx">0.0 MB</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Real-time Chart -->
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <div class="chart-title">
+                            <h3>Wizualizacja natężenia ruchu sieciowego (ostatnia minuta)</h3>
+                        </div>
+                        <div class="chart-legend">
+                            <div class="legend-item"><span class="legend-dot down"></span> Pobieranie</div>
+                            <div class="legend-item"><span class="legend-dot up"></span> Wysyłanie</div>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="realtime-chart"></canvas>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
