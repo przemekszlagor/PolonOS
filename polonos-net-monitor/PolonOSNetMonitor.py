@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 import os
 import sys
+
+# Zapobieganie błędom renderingu WebKit2GTK pod Wayland (np. na kartach NVIDIA)
+os.environ["WEBKIT_DISABLE_COMPOSITING_MODE"] = "1"
+os.environ["WEBKIT_DISABLE_DMABUF_RENDERER"] = "1"
+
 import json
 import time
 import socket
@@ -220,7 +225,8 @@ class PolonOSNetMonitorApp(Gtk.Window):
         json_str = json.dumps({"type": event_type, "payload": data})
         escaped_json = json_str.replace("\\", "\\\\").replace("'", "\\'")
         js_code = f"window.dispatchEvent(new CustomEvent('polonosnetmonitor-event', {{ detail: '{escaped_json}' }}));"
-        self.webview.run_javascript(js_code, None, None, None)
+        # evaluate_javascript zastępuje przestarzałe run_javascript
+        self.webview.evaluate_javascript(js_code, -1, None, None, None, None, None)
         
     def on_stats_updated(self, stats):
         self.send_to_js("realtime-stats", stats)
@@ -283,7 +289,6 @@ class PolonOSNetMonitorApp(Gtk.Window):
 
 if __name__ == "__main__":
     Gtk.init(None)
-    GLib.threads_init()
     app = PolonOSNetMonitorApp()
     app.show_all()
     Gtk.main()

@@ -297,6 +297,7 @@ class HardwareCheckThread(QThread):
         super().__init__()
         self.nvidia_stable_ver = None
         self.nvidia_latest_ver = None
+        self.nvidia_pascal_maxwell = False
         
     def run(self):
         self.progress_signal.emit("=== ROZPOCZĘTO SKANOWANIE SPRZĘTU ===\n")
@@ -319,6 +320,7 @@ class HardwareCheckThread(QThread):
         # 2. Check GPU
         self.progress_signal.emit("[*] Wykrywanie karty graficznej (GPU)...")
         nvidia_detected = False
+        self.nvidia_pascal_maxwell = False
         amd_detected = False
         gpu_info = ""
         try:
@@ -326,9 +328,33 @@ class HardwareCheckThread(QThread):
             self.progress_signal.emit("    Wykryte urządzenia wideo:")
             for line in lspci_gpu.split("\n"):
                 self.progress_signal.emit(f"    -> {line}")
-                if "nvidia" in line.lower():
+                line_lower = line.lower()
+                if "nvidia" in line_lower:
                     nvidia_detected = True
-                if "amd" in line.lower() or "ati" in line.lower():
+                    # Check for Maxwell / Pascal
+                    chips = ["gp100", "gp102", "gp104", "gp106", "gp107", "gp108", 
+                             "gm107", "gm108", "gm200", "gm204", "gm206"]
+                    is_legacy_arch = False
+                    for chip in chips:
+                        if chip in line_lower:
+                            is_legacy_arch = True
+                            break
+                    if not is_legacy_arch:
+                        # Check marketing names
+                        if "750 ti" in line_lower or "750ti" in line_lower:
+                            is_legacy_arch = True
+                        else:
+                            for model in ["950", "960", "970", "980", "1030", "1050", "1060", "1070", "1080"]:
+                                if model in line_lower:
+                                    is_legacy_arch = True
+                                    break
+                            if not is_legacy_arch:
+                                if re.search(r"gtx\s+9\d0", line_lower) or re.search(r"gtx\s+10\d0", line_lower):
+                                    is_legacy_arch = True
+                    
+                    if is_legacy_arch:
+                        self.nvidia_pascal_maxwell = True
+                if "amd" in line_lower or "ati" in line_lower:
                     amd_detected = True
             gpu_info = lspci_gpu
         except Exception as e:
@@ -429,7 +455,7 @@ class HardwareCheckThread(QThread):
             # Query latest version online
             if network_ok:
                 try:
-                    url = "https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/Packages"
+                    url = "https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/Packages"
                     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
                     with urllib.request.urlopen(req, timeout=5) as response:
                         content = response.read().decode('utf-8', errors='ignore')
@@ -662,10 +688,10 @@ class ProgressDialog(QtWidgets.QDialog):
 
 # --- NVIDIA DRIVER CHOICE DIALOG ---
 class NvidiaDriverDialog(QtWidgets.QDialog):
-    def __init__(self, stable_ver=None, latest_ver=None, parent=None):
+    def __init__(self, stable_ver=None, latest_ver=None, is_legacy=False, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Sterownik karty graficznej NVIDIA")
-        self.setFixedSize(500, 320)
+        self.setFixedSize(500, 390)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         
         # Style matching the premium dark theme
@@ -732,24 +758,37 @@ class NvidiaDriverDialog(QtWidgets.QDialog):
         if stable_ver:
             stable_text += f" (wersja: {stable_ver})"
         self.radio_stable = QtWidgets.QRadioButton(stable_text)
-        self.radio_stable.setChecked(True)
         lbl_stable_desc = QLabel("Zalecana dla większości użytkowników. Zapewnia maksymalną stabilność systemu.")
         lbl_stable_desc.setWordWrap(True)
-        lbl_stable_desc.setStyleSheet("color: #94a3b8; font-size: 11px; margin-left: 26px; margin-bottom: 10px;")
+        lbl_stable_desc.setStyleSheet("color: #94a3b8; font-size: 11px; margin-left: 26px; margin-bottom: 5px;")
+        
+        self.radio_legacy_580 = QtWidgets.QRadioButton("Dedykowana wersja 580.xx (LTS)")
+        lbl_legacy_desc = QLabel("Zalecana dla kart Pascal (seria 10xx, np. 1050/1060/1070) oraz Maxwell (750 Ti, seria 9xx). Zapewnia pełne wsparcie i stabilność bez ryzyka problemów z nowszymi gałęziami.")
+        lbl_legacy_desc.setWordWrap(True)
+        lbl_legacy_desc.setStyleSheet("color: #94a3b8; font-size: 11px; margin-left: 26px; margin-bottom: 5px;")
         
         latest_text = "Najnowsza wersja (oficjalna)"
         if latest_ver:
             latest_text += f" (wersja: {latest_ver})"
         self.radio_latest = QtWidgets.QRadioButton(latest_text)
-        lbl_latest_desc = QLabel("Zalecana dla graczy oraz osób korzystających z AI/CUDA. Pobiera najnowsze oprogramowanie bezpośrednio z serwerów NVIDIA.")
+        lbl_latest_desc = QLabel("Zalecana dla nowszych kart (RTX), graczy oraz osób korzystających z AI/CUDA. Pobiera najnowsze oprogramowanie bezpośrednio z serwerów NVIDIA.")
         lbl_latest_desc.setWordWrap(True)
         lbl_latest_desc.setStyleSheet("color: #94a3b8; font-size: 11px; margin-left: 26px;")
         
         layout.addWidget(self.radio_stable)
         layout.addWidget(lbl_stable_desc)
+        layout.addWidget(self.radio_legacy_580)
+        layout.addWidget(lbl_legacy_desc)
         layout.addWidget(self.radio_latest)
         layout.addWidget(lbl_latest_desc)
         
+        if is_legacy:
+            self.radio_legacy_580.setChecked(True)
+            self.radio_legacy_580.setStyleSheet("color: #38bdf8; font-size: 13px; font-weight: bold; spacing: 8px;")
+            lbl_legacy_desc.setStyleSheet("color: #38bdf8; font-size: 11px; margin-left: 26px; margin-bottom: 5px; font-weight: bold;")
+        else:
+            self.radio_stable.setChecked(True)
+            
         layout.addSpacing(10)
         
         btn_layout = QHBoxLayout()
@@ -764,6 +803,8 @@ class NvidiaDriverDialog(QtWidgets.QDialog):
     def get_choice(self):
         if self.radio_latest.isChecked():
             return "latest"
+        elif self.radio_legacy_580.isChecked():
+            return "legacy_580"
         return "stable"
 
 
@@ -1523,7 +1564,8 @@ class MainWindow(QMainWindow):
         if "nvidia" in self.recommended_drivers:
             stable_ver = getattr(self.check_thread, 'nvidia_stable_ver', None)
             latest_ver = getattr(self.check_thread, 'nvidia_latest_ver', None)
-            dialog = NvidiaDriverDialog(stable_ver, latest_ver, self)
+            is_legacy = getattr(self.check_thread, 'nvidia_pascal_maxwell', False)
+            dialog = NvidiaDriverDialog(stable_ver, latest_ver, is_legacy, self)
             if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
                 self.nvidia_choice = dialog.get_choice()
             else:
@@ -1531,6 +1573,8 @@ class MainWindow(QMainWindow):
                 
             if self.nvidia_choice == "latest":
                 self.console_output.appendPlainText("\n[Wybór użytkownika] Wybrano instalację najnowszych sterowników NVIDIA z oficjalnego repozytorium producenta.")
+            elif self.nvidia_choice == "legacy_580":
+                self.console_output.appendPlainText("\n[Wybór użytkownika] Wybrano instalację dedykowanych sterowników NVIDIA 580.xx (LTS) dla architektury Pascal/Maxwell.")
             else:
                 self.console_output.appendPlainText("\n[Wybór użytkownika] Wybrano instalację stabilnych sterowników NVIDIA z repozytorium dystrybucji.")
         
@@ -1571,15 +1615,45 @@ echo ""
                 script_content += """
 echo -e "${YELLOW}[*] Wykryto GPU Nvidia. Przygotowywanie instalacji najnowszych sterowników własnościowych...${NC}"
 echo -e "${YELLOW}[*] Dodawanie oficjalnego klucza i repozytorium sieciowego NVIDIA...${NC}"
-wget -O /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb || curl -L -o /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb
+wget -O /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/cuda-keyring_1.1-1_all.deb || curl -L -o /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/cuda-keyring_1.1-1_all.deb
 if [ $? -eq 0 ]; then
     dpkg -i /tmp/cuda-keyring.deb
     apt-get -o DPkg::Lock::Timeout=60 update
+    echo -e "${YELLOW}[*] Instalacja narzędzi budowania (build-essential) oraz nagłówków jądra...${NC}"
+    apt-get install -y -o DPkg::Lock::Timeout=60 build-essential linux-headers-amd64
+    apt-get install -y -o DPkg::Lock::Timeout=60 "linux-headers-$(uname -r)" || true
     echo -e "${YELLOW}[*] Instalacja najnowszych sterowników NVIDIA z oficjalnego repozytorium...${NC}"
     apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-kernel-dkms
 else
     echo -e "${RED}[!] Nie udało się pobrać klucza repozytorium NVIDIA. Próba instalacji sterownika stabilnego...${NC}"
     apt-get -o DPkg::Lock::Timeout=60 update
+    echo -e "${YELLOW}[*] Instalacja narzędzi budowania (build-essential) oraz nagłówków jądra...${NC}"
+    apt-get install -y -o DPkg::Lock::Timeout=60 build-essential linux-headers-amd64
+    apt-get install -y -o DPkg::Lock::Timeout=60 "linux-headers-$(uname -r)" || true
+    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-kernel-dkms
+fi
+"""
+            elif getattr(self, 'nvidia_choice', 'stable') == 'legacy_580':
+                script_content += """
+echo -e "${YELLOW}[*] Wykryto GPU Nvidia (Pascal/Maxwell). Przygotowywanie instalacji dedykowanych sterowników 580.xx...${NC}"
+echo -e "${YELLOW}[*] Dodawanie oficjalnego klucza i repozytorium sieciowego NVIDIA...${NC}"
+wget -O /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/cuda-keyring_1.1-1_all.deb || curl -L -o /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/cuda-keyring_1.1-1_all.deb
+if [ $? -eq 0 ]; then
+    dpkg -i /tmp/cuda-keyring.deb
+    apt-get -o DPkg::Lock::Timeout=60 update
+    echo -e "${YELLOW}[*] Instalacja narzędzi budowania (build-essential) oraz nagłówków jądra...${NC}"
+    apt-get install -y -o DPkg::Lock::Timeout=60 build-essential linux-headers-amd64
+    apt-get install -y -o DPkg::Lock::Timeout=60 "linux-headers-$(uname -r)" || true
+    echo -e "${YELLOW}[*] Instalacja pakietu blokującego wersję (pinning) dla serii 580...${NC}"
+    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver-pinning-580
+    echo -e "${YELLOW}[*] Instalacja sterowników NVIDIA 580.xx...${NC}"
+    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-kernel-dkms
+else
+    echo -e "${RED}[!] Nie udało się pobrać klucza repozytorium NVIDIA. Próba instalacji sterownika stabilnego...${NC}"
+    apt-get -o DPkg::Lock::Timeout=60 update
+    echo -e "${YELLOW}[*] Instalacja narzędzi budowania (build-essential) oraz nagłówków jądra...${NC}"
+    apt-get install -y -o DPkg::Lock::Timeout=60 build-essential linux-headers-amd64
+    apt-get install -y -o DPkg::Lock::Timeout=60 "linux-headers-$(uname -r)" || true
     apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-kernel-dkms
 fi
 """
@@ -1587,9 +1661,15 @@ fi
                 script_content += """
 echo -e "${YELLOW}[*] Wykryto GPU Nvidia. Instalacja stabilnych sterowników własnościowych...${NC}"
 if command -v ubuntu-drivers &> /dev/null; then
+    apt-get -o DPkg::Lock::Timeout=60 update
+    apt-get install -y -o DPkg::Lock::Timeout=60 build-essential linux-headers-amd64
+    apt-get install -y -o DPkg::Lock::Timeout=60 "linux-headers-$(uname -r)" || true
     ubuntu-drivers install
 else
     apt-get -o DPkg::Lock::Timeout=60 update
+    echo -e "${YELLOW}[*] Instalacja narzędzi budowania (build-essential) oraz nagłówków jądra...${NC}"
+    apt-get install -y -o DPkg::Lock::Timeout=60 build-essential linux-headers-amd64
+    apt-get install -y -o DPkg::Lock::Timeout=60 "linux-headers-$(uname -r)" || true
     apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-kernel-dkms
 fi
 """
