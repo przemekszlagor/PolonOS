@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# PolonOS Net Monitor v1.1 - Aplikacja do monitorowania łącz sieciowych w PolonOS
 import os
 import sys
 
