@@ -1,4 +1,4 @@
-# PolonOS 1.0 LTS (KDE Plasma)
+# PolonOS LTS (KDE Plasma)
 
 PolonOS to polska, stabilna i bezpieczna dystrybucja systemu operacyjnego oparta na gałęzi testowej Debiana (Testing/Trixie) ze środowiskiem graficznym KDE Plasma. System został zoptymalizowany pod kątem wysokiej wydajności oraz łatwości użytkowania.
 
