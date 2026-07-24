@@ -815,7 +815,7 @@ class MainWindow(QMainWindow):
         
         # Load local paths
         self.wallpaper_path = get_asset_path("polonos_wallpaper.png")
-        self.logo_path = get_asset_path("polonos-logo.png") or get_asset_path("polonos-logo.svg")
+        self.logo_path = get_asset_path("polonos-welcome.png") or get_asset_path("polonos-logo.png") or get_asset_path("polonos-logo.svg")
         self.check_icon_path = create_default_icons()
         
         # Window properties

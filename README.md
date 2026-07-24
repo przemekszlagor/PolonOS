@@ -6,11 +6,25 @@ PolonOS to polska, stabilna i bezpieczna dystrybucja systemu operacyjnego oparta
 
 ## Pobieranie (ISO)
 
-Oficjalny obraz instalacyjny ISO z serwerów SourceForge:
+Najnowszy obraz instalacyjny ISO systemu PolonOS możesz pobrać z różnych źródeł, w zależności od preferencji dotyczących szybkości transferu:
 
-[![Pobierz PolonOS](https://img.shields.io/badge/Pobierz%20PolonOS-Obraz%20ISO%20%283.4%20GB%29-0284c7?style=for-the-badge&logo=linux&logoColor=white)](https://sourceforge.net/projects/polonos/files/latest/download)
+### 🚀 Szybkie pobieranie bezpośrednie (CDN)
 
-*(Link automatycznie pobiera najnowszą wersję instalatora z sieci serwerów lustrzanych SourceForge).*
+*   **[Lustro Główne (Cloudflare R2 CDN)](https://pub-fdfbdf6f7a81492aaf39366393d73ad6.r2.dev/iso/polonos-1.1-amd64.iso)** – **Zalecane**, najszybsze pobieranie z globalnej sieci dostarczania treści bez limitów prędkości.
+*   **[Lustro SourceForge](https://sourceforge.net/projects/polonos/files/latest/download)** – Tradycyjna sieć serwerów lustrzanych (pobieranie może być wolniejsze w zależności od obciążenia).
+
+### 👥 Pobieranie P2P (BitTorrent)
+
+Dla osób chcących zminimalizować zużycie łączy serwera lub pobierać w niesprzyjających warunkach sieciowych rekomendujemy protokół P2P:
+
+*   📥 **[Plik .torrent](https://pub-fdfbdf6f7a81492aaf39366393d73ad6.r2.dev/torrents/polonos-1.1-amd64.iso.torrent)** – Oficjalny plik torrent.
+*   🧲 **[Link Magnet](magnet:?xt=urn:btih:d5eccd29118c5c495a6821f2af0f1e83e120bd854404f28c9735f9fc0e211246&dn=polonos-1.1-amd64.iso)** – Bezpośrednie otwarcie pobierania w Twoim kliencie torrent.
+
+### 🛡️ Weryfikacja integralności obrazu
+
+Przed nagraniem ISO na nośnik USB (np. programem Rufus lub Ventoy), upewnij się, że plik nie uległ uszkodzeniu podczas transferu:
+
+*   **Suma kontrolna SHA256:** `d5eccd29118c5c495a6821f2af0f1e83e120bd854404f28c9735f9fc0e211246`
 
 ---
 
