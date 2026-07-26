@@ -8,19 +8,19 @@ PolonOS to polska, stabilna i bezpieczna dystrybucja systemu operacyjnego oparta
 
 Najnowszy obraz instalacyjny ISO systemu PolonOS możesz pobrać z różnych źródeł, w zależności od preferencji dotyczących szybkości transferu:
 
-### 🚀 Szybkie pobieranie bezpośrednie (CDN)
+### Szybkie pobieranie bezpośrednie (CDN)
 
-*   **[Lustro Główne (Cloudflare R2 CDN)](https://pub-fdfbdf6f7a81492aaf39366393d73ad6.r2.dev/iso/polonos-1.1-amd64.iso)** – **Zalecane**, najszybsze pobieranie z globalnej sieci dostarczania treści bez limitów prędkości.
-*   **[Lustro SourceForge](https://sourceforge.net/projects/polonos/files/latest/download)** – Tradycyjna sieć serwerów lustrzanych (pobieranie może być wolniejsze w zależności od obciążenia).
+*   **[Główny Mirror (Cloudflare R2 CDN)](https://pub-fdfbdf6f7a81492aaf39366393d73ad6.r2.dev/iso/polonos-1.1-amd64.iso)** – **Zalecane**, najszybsze pobieranie z globalnej sieci dostarczania treści bez limitów prędkości.
+*   **[SourceForge](https://sourceforge.net/projects/polonos/files/latest/download)** – Tradycyjna sieć serwerów lustrzanych (pobieranie może być wolniejsze w zależności od obciążenia).
 
-### 👥 Pobieranie P2P (BitTorrent)
+### Pobieranie P2P (BitTorrent)
 
 Dla osób chcących zminimalizować zużycie łączy serwera lub pobierać w niesprzyjających warunkach sieciowych rekomendujemy protokół P2P:
 
-*   📥 **[Plik .torrent](https://pub-fdfbdf6f7a81492aaf39366393d73ad6.r2.dev/torrents/polonos-1.1-amd64.iso.torrent)** – Oficjalny plik torrent.
-*   🧲 **[Link Magnet](magnet:?xt=urn:btih:d5eccd29118c5c495a6821f2af0f1e83e120bd854404f28c9735f9fc0e211246&dn=polonos-1.1-amd64.iso)** – Bezpośrednie otwarcie pobierania w Twoim kliencie torrent.
+*   **[Plik .torrent](https://pub-fdfbdf6f7a81492aaf39366393d73ad6.r2.dev/torrents/polonos-1.1-amd64.iso.torrent)** – Oficjalny plik torrent.
+*   **[Link Magnet](magnet:?xt=urn:btih:d5eccd29118c5c495a6821f2af0f1e83e120bd854404f28c9735f9fc0e211246&dn=polonos-1.1-amd64.iso)** – Bezpośrednie otwarcie pobierania w Twoim kliencie torrent.
 
-### 🛡️ Weryfikacja integralności obrazu
+### Weryfikacja integralności obrazu
 
 Przed nagraniem ISO na nośnik USB (np. programem Rufus lub Ventoy), upewnij się, że plik nie uległ uszkodzeniu podczas transferu:
 
