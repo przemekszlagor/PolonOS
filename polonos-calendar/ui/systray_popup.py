@@ -129,13 +129,13 @@ class SystrayPopup(QWidget):
     def refresh_events(self):
         # Clear previous cards
         for child in self.scroll_content.findChildren(PopupEventCard):
-            child.setParent(None)
+            child.hide()
             child.deleteLater()
             
         # Also clear "Brak wydarzeń" label
         for child in self.scroll_content.findChildren(QLabel):
             if child.objectName() == "no_events_label":
-                child.setParent(None)
+                child.hide()
                 child.deleteLater()
                 
         events = self.db.get_upcoming_events(limit=8)

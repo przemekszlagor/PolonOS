@@ -3,6 +3,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QScrollArea, QFrame, QGridLayout, QSizePolicy, QPushButton)
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QPainter, QColor, QPen
+from src.ui.styles import get_theme_today_styles, get_timeline_colors
 
 # Constant for timeline height scaling
 HOUR_HEIGHT = 60
@@ -39,6 +40,83 @@ def event_overlaps_day(event, date_str):
     day_start = f"{date_str}T00:00:00"
     day_end = f"{date_str}T23:59:59"
     return event['start_time'] <= day_end and event['end_time'] >= day_start
+
+
+
+def resolve_layout_positions(cards, day_width, left_offset):
+    """
+    Given a list of EventCard widgets, computes their correct geometry positions
+    based on overlap clustering and column division.
+    Returns a list of tuples: (card, left, top, width, height)
+    """
+    if not cards:
+        return []
+        
+    # 1. Parse card times
+    parsed = []
+    for card in cards:
+        s_dt = datetime.fromisoformat(card.event_data['start_time'])
+        e_dt = datetime.fromisoformat(card.event_data['end_time'])
+        
+        s_min = s_dt.hour * 60 + s_dt.minute
+        e_min = e_dt.hour * 60 + e_dt.minute
+        if e_min - s_min < 30:
+            e_min = s_min + 30
+            
+        parsed.append({
+            'card': card,
+            'start': s_min,
+            'end': e_min
+        })
+        
+    # 2. Sort by start time
+    parsed.sort(key=lambda x: x['start'])
+    
+    # 3. Cluster into overlapping groups (overlapping in time)
+    groups = []
+    for pc in parsed:
+        placed_in_group = False
+        for g in groups:
+            # Check if this card overlaps with the group
+            max_end = max(item['end'] for item in g)
+            if pc['start'] < max_end:
+                g.append(pc)
+                placed_in_group = True
+                break
+        if not placed_in_group:
+            groups.append([pc])
+            
+    # 4. Resolve columns within each group
+    layout_results = []
+    for group in groups:
+        group.sort(key=lambda x: x['start'])
+        columns = []
+        for pc in group:
+            col_placed = False
+            for col_idx, col in enumerate(columns):
+                if col[-1]['end'] <= pc['start']:
+                    col.append(pc)
+                    pc['col_idx'] = col_idx
+                    col_placed = True
+                    break
+            if not col_placed:
+                columns.append([pc])
+                pc['col_idx'] = len(columns) - 1
+                
+        num_cols = len(columns)
+        col_width = day_width / max(num_cols, 1)
+        
+        for pc in group:
+            top = (pc['start'] / 60.0) * HOUR_HEIGHT
+            height = ((pc['end'] - pc['start']) / 60.0) * HOUR_HEIGHT
+            
+            # Add padding
+            left = left_offset + (pc['col_idx'] * col_width) + 2
+            width = col_width - 4
+            
+            layout_results.append((pc['card'], left, top, width, height))
+            
+    return layout_results
 
 
 def get_contrast_text_color(bg_hex):
@@ -126,12 +204,6 @@ class AllDayEventsWidget(QWidget):
         self.expanded = False
         
         self.setObjectName("allday_events_widget")
-        self.setStyleSheet("""
-            #allday_events_widget {
-                background-color: #1e1e24;
-                border-bottom: 1px solid #27272a;
-            }
-        """)
         
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(15, 6, 15, 6)
@@ -177,10 +249,12 @@ class AllDayEventsWidget(QWidget):
         
         # Clear container layout
         for i in reversed(range(self.pills_layout.count())):
-            w = self.pills_layout.itemAt(i).widget()
-            if w:
-                w.setParent(None)
-                w.deleteLater()
+            item = self.pills_layout.takeAt(i)
+            if item:
+                w = item.widget()
+                if w:
+                    w.hide()
+                    w.deleteLater()
                 
         if not self.all_events:
             self.hide()
@@ -234,9 +308,20 @@ class EventCard(QFrame):
         
         # Color styling
         color = event.get('calendar_color', '#6366f1')
+        from src.ui.styles import get_current_theme_mode
+        theme_mode = get_current_theme_mode()
+        if theme_mode == "ciemny":
+            bg_color = "#27272c"
+            title_color = "#f4f4f5"
+            desc_color = "#a1a1aa"
+        else:
+            bg_color = "#f4f5f7"
+            title_color = "#27272a"
+            desc_color = "#52525b"
+            
         self.setStyleSheet(f"""
             #event_card {{
-                background-color: #242429;
+                background-color: {bg_color};
                 border-left: 4px solid {color};
                 border-radius: 6px;
             }}
@@ -246,28 +331,63 @@ class EventCard(QFrame):
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(2)
         
-        title_lbl = QLabel(event.get('summary', '(Bez tytułu)'), self)
-        title_lbl.setObjectName("event_card_title")
-        title_lbl.setStyleSheet("font-weight: bold; color: #f4f4f5; font-size: 12px;")
-        title_lbl.setWordWrap(True)
+        self.title_lbl = ElidedLabel(event.get('summary', '(Bez tytułu)'), self)
+        self.title_lbl.setObjectName("event_card_title")
+        self.title_lbl.setStyleSheet(f"font-weight: bold; color: {title_color}; font-size: 11px; border: none; background: transparent;")
         
-        time_lbl = QLabel(time_str, self)
-        time_lbl.setObjectName("event_card_time")
-        time_lbl.setStyleSheet(f"color: {color}; font-size: 10px; font-weight: 500;")
+        self.time_lbl = QLabel(time_str, self)
+        self.time_lbl.setObjectName("event_card_time")
+        self.time_lbl.setStyleSheet(f"color: {color}; font-size: 10px; font-weight: 500; border: none; background: transparent;")
         
-        layout.addWidget(title_lbl)
-        layout.addWidget(time_lbl)
+        layout.addWidget(self.title_lbl)
+        layout.addWidget(self.time_lbl)
         
         # Location if present
         loc = event.get('location', '')
+        self.loc_lbl = None
         if loc:
-            loc_lbl = QLabel(loc, self)
-            loc_lbl.setObjectName("event_card_loc")
-            loc_lbl.setStyleSheet("color: #a1a1aa; font-size: 10px;")
-            loc_lbl.setWordWrap(True)
-            layout.addWidget(loc_lbl)
+            self.loc_lbl = QLabel(loc, self)
+            self.loc_lbl.setObjectName("event_card_loc")
+            self.loc_lbl.setStyleSheet(f"color: {desc_color}; font-size: 10px; border: none; background: transparent;")
+            self.loc_lbl.setWordWrap(True)
+            layout.addWidget(self.loc_lbl)
             
         layout.addStretch()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        h = self.height()
+        
+        # Adjust margins and spacing to maximize readable space
+        if h < 45:
+            self.layout().setContentsMargins(6, 2, 6, 2)
+            self.layout().setSpacing(0)
+            
+            # Short event: Combine time prefix and title on a single line
+            start_dt = datetime.fromisoformat(self.event_data['start_time'])
+            time_prefix = start_dt.strftime('%H:%M')
+            self.title_lbl.setText(f"{time_prefix} {self.event_data.get('summary', '(Bez tytułu)')}")
+            self.time_lbl.hide()
+            if self.loc_lbl:
+                self.loc_lbl.hide()
+        elif h < 75:
+            self.layout().setContentsMargins(8, 4, 8, 4)
+            self.layout().setSpacing(2)
+            
+            # Medium event: Show title and time, hide location
+            self.title_lbl.setText(self.event_data.get('summary', '(Bez tytułu)'))
+            self.time_lbl.show()
+            if self.loc_lbl:
+                self.loc_lbl.hide()
+        else:
+            self.layout().setContentsMargins(8, 4, 8, 4)
+            self.layout().setSpacing(2)
+            
+            # Long event: Show title, time, and location
+            self.title_lbl.setText(self.event_data.get('summary', '(Bez tytułu)'))
+            self.time_lbl.show()
+            if self.loc_lbl:
+                self.loc_lbl.show()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -286,12 +406,20 @@ class TimelineBackground(QWidget):
         
     def paintEvent(self, event):
         painter = QPainter(self)
+        colors = get_timeline_colors()
+        
+        # Fill background explicitly to match the active theme
+        from src.ui.styles import get_current_theme_mode
+        theme_mode = get_current_theme_mode()
+        bg_color = QColor("#1e1e24") if theme_mode == "ciemny" else QColor("#ffffff")
+        painter.fillRect(self.rect(), bg_color)
+        
         if self.is_today:
             rect = self.rect()
             rect.setLeft(TIME_COLUMN_WIDTH)
-            painter.fillRect(rect, QColor("#22222b"))
+            painter.fillRect(rect, colors["today_bg"])
             
-        pen = QPen(QColor("#27272a"), 1, Qt.SolidLine)
+        pen = QPen(colors["line"], 1, Qt.SolidLine)
         painter.setPen(pen)
         
         for hour in range(24):
@@ -300,9 +428,13 @@ class TimelineBackground(QWidget):
             painter.drawLine(TIME_COLUMN_WIDTH, y, self.width(), y)
             
             # Draw hour label
-            painter.setPen(QColor("#71717a"))
+            painter.setPen(colors["text"])
             painter.drawText(10, y + 15, f"{hour:02d}:00")
-            painter.setPen(QPen(QColor("#27272a"), 1, Qt.SolidLine))
+            painter.setPen(QPen(colors["line"], 1, Qt.SolidLine))
+            
+        # Draw vertical divider line on the right edge
+        painter.setPen(QPen(colors["line"], 1, Qt.SolidLine))
+        painter.drawLine(self.width() - 1, 0, self.width() - 1, self.height())
 
 
 class DayTimelineWidget(QWidget):
@@ -315,20 +447,23 @@ class DayTimelineWidget(QWidget):
         super().__init__(parent)
         self.setMinimumHeight(24 * HOUR_HEIGHT)
         self.events = []
+        self.cards = []
         self.bg = TimelineBackground(self)
         
     def set_events(self, events):
         self.events = events
-        # Clear existing event cards immediately to avoid findChildren inclusion
-        for child in self.findChildren(EventCard):
-            child.setParent(None)
-            child.deleteLater()
+        # Clear existing event cards immediately to avoid memory overlap
+        for card in self.cards:
+            card.hide()
+            card.deleteLater()
+        self.cards = []
             
         # Add new cards
         for event in self.events:
             card = EventCard(event, self)
             card.clicked.connect(self.event_clicked.emit)
             card.show()
+            self.cards.append(card)
             
         self.update_card_geometries()
 
@@ -338,62 +473,15 @@ class DayTimelineWidget(QWidget):
         self.update_card_geometries()
 
     def update_card_geometries(self):
-        cards = self.findChildren(EventCard)
-        if not cards:
+        if not self.cards:
             return
             
-        # Group cards by time overlaps to column-tile them
-        # For simplicity, we process cards and find overlaps
-        parsed_cards = []
-        for card in cards:
-            start_dt = datetime.fromisoformat(card.event_data['start_time'])
-            end_dt = datetime.fromisoformat(card.event_data['end_time'])
-            
-            start_minutes = start_dt.hour * 60 + start_dt.minute
-            end_minutes = end_dt.hour * 60 + end_dt.minute
-            # Duration must be at least 30 minutes for visibility
-            if end_minutes - start_minutes < 30:
-                end_minutes = start_minutes + 30
-                
-            parsed_cards.append({
-                'card': card,
-                'start': start_minutes,
-                'end': end_minutes
-            })
-            
-        # Basic layout resolution for overlaps
-        # Sort by start time
-        parsed_cards.sort(key=lambda x: x['start'])
+        day_width = self.width() - TIME_COLUMN_WIDTH - 20
+        left_offset = TIME_COLUMN_WIDTH + 10
+        positions = resolve_layout_positions(self.cards, day_width, left_offset)
         
-        # Simple column assignment
-        columns = [] # list of lists of cards
-        for pc in parsed_cards:
-            placed = False
-            for col_idx, col in enumerate(columns):
-                # Check if this card overlaps with the last card in the column
-                if col[-1]['end'] <= pc['start']:
-                    col.append(pc)
-                    pc['col'] = col_idx
-                    placed = True
-                    break
-            if not placed:
-                columns.append([pc])
-                pc['col'] = len(columns) - 1
-                
-        # Total columns count for width division
-        num_cols = len(columns)
-        available_width = self.width() - TIME_COLUMN_WIDTH - 20
-        col_width = available_width / max(num_cols, 1)
-        
-        for pc in parsed_cards:
-            col_idx = pc['col']
-            top = (pc['start'] / 60.0) * HOUR_HEIGHT
-            height = ((pc['end'] - pc['start']) / 60.0) * HOUR_HEIGHT
-            
-            left = TIME_COLUMN_WIDTH + 10 + (col_idx * col_width)
-            width = col_width - 4
-            
-            pc['card'].setGeometry(left, top, width, height)
+        for card, left, top, width, height in positions:
+            card.setGeometry(left, top, width, height)
 
 
 class DayView(QWidget):
@@ -474,12 +562,6 @@ class WeekView(QWidget):
         # Pinned All-Day Row
         self.allday_row_widget = QWidget(self)
         self.allday_row_widget.setObjectName("allday_row_widget")
-        self.allday_row_widget.setStyleSheet("""
-            #allday_row_widget {
-                background-color: #1e1e24;
-                border-bottom: 1px solid #27272a;
-            }
-        """)
         self.allday_row_layout = QHBoxLayout(self.allday_row_widget)
         self.allday_row_layout.setContentsMargins(TIME_COLUMN_WIDTH, 2, 10, 2)
         self.allday_row_layout.setSpacing(4)
@@ -521,28 +603,34 @@ class WeekView(QWidget):
                         
                     def paintEvent(self, ev):
                         painter = QPainter(self)
+                        colors = get_timeline_colors()
+                        
+                        # Fill background explicitly to match the active theme
+                        from src.ui.styles import get_current_theme_mode
+                        theme_mode = get_current_theme_mode()
+                        bg_color = QColor("#1e1e24") if theme_mode == "ciemny" else QColor("#ffffff")
+                        painter.fillRect(self.rect(), bg_color)
+                        
                         if self.is_today:
-                            painter.fillRect(self.rect(), QColor("#22222b"))
-                        painter.setPen(QColor("#27272a"))
+                            painter.fillRect(self.rect(), colors["today_bg"])
+                        painter.setPen(colors["line"])
                         for h in range(24):
                             painter.drawLine(0, h * HOUR_HEIGHT, self.width(), h * HOUR_HEIGHT)
+                            
+                        # Draw vertical divider line on the right edge
+                        painter.drawLine(self.width() - 1, 0, self.width() - 1, self.height())
                 timeline.bg.deleteLater()
                 timeline.bg = CleanTimelineBackground(timeline)
                 # Overwrite standard coordinates with safe closure mapping
                 def make_update_func(t_line):
                     def update_func():
-                        t_cards = t_line.findChildren(EventCard)
+                        t_cards = t_line.cards
                         if not t_cards: return
-                        t_w = t_line.width() / len(t_cards) # basic column division
-                        for c_idx, tc in enumerate(t_cards):
-                            s_dt = datetime.fromisoformat(tc.event_data['start_time'])
-                            e_dt = datetime.fromisoformat(tc.event_data['end_time'])
-                            s_min = s_dt.hour * 60 + s_dt.minute
-                            e_min = e_dt.hour * 60 + e_dt.minute
-                            if e_min - s_min < 30: e_min = s_min + 30
-                            top = (s_min / 60.0) * HOUR_HEIGHT
-                            h_px = ((e_min - s_min) / 60.0) * HOUR_HEIGHT
-                            tc.setGeometry(c_idx * t_w + 2, top, t_w - 4, h_px)
+                        day_width = t_line.width() - 4
+                        left_offset = 2
+                        positions = resolve_layout_positions(t_cards, day_width, left_offset)
+                        for card, left, top, width, height in positions:
+                            card.setGeometry(left, top, width, height)
                     return update_func
                 timeline.update_card_geometries = make_update_func(timeline)
                 
@@ -587,8 +675,9 @@ class WeekView(QWidget):
             
             # If it's today, highlight the header and all-day cell
             if is_today:
-                self.header_labels[i].setStyleSheet("color: #6366f1; font-size: 11px; font-weight: bold; background-color: #22222b; border-radius: 4px; padding: 4px;")
-                self.allday_cells[i].setStyleSheet("background-color: #22222b; border-radius: 4px;")
+                styles = get_theme_today_styles()
+                self.header_labels[i].setStyleSheet(f"color: {styles['accent']}; font-size: 11px; font-weight: bold; background-color: {styles['today_bg']}; border-radius: 4px; padding: 4px;")
+                self.allday_cells[i].setStyleSheet(f"background-color: {styles['today_bg']}; border-radius: 4px;")
             else:
                 self.header_labels[i].setStyleSheet("color: #a1a1aa; font-size: 11px; font-weight: bold; padding: 4px;")
                 self.allday_cells[i].setStyleSheet("background-color: transparent;")
@@ -600,10 +689,12 @@ class WeekView(QWidget):
             # Clear previous pills in this day cell
             cell_layout = self.allday_cells[i].layout()
             for k in reversed(range(cell_layout.count())):
-                w = cell_layout.itemAt(k).widget()
-                if w:
-                    w.setParent(None)
-                    w.deleteLater()
+                item = cell_layout.takeAt(k)
+                if item:
+                    w = item.widget()
+                    if w:
+                        w.hide()
+                        w.deleteLater()
                     
             # Filter events
             date_str = day_date.strftime("%Y-%m-%d")
@@ -652,7 +743,8 @@ class MonthDayCell(QFrame):
         
         # Style label according to today / other month
         if date.date() == datetime.now().date():
-            lbl_num.setStyleSheet("color: #6366f1; font-weight: bold; font-size: 11px;")
+            styles = get_theme_today_styles()
+            lbl_num.setStyleSheet(f"color: {styles['accent']}; font-weight: bold; font-size: 11px;")
         elif not is_current_month:
             lbl_num.setStyleSheet("color: #3f3f46; font-size: 11px;")
         else:
@@ -736,7 +828,7 @@ class MonthView(QWidget):
     def set_month_and_events(self, year, month, events):
         # Clear grid immediately to avoid double layout assignment
         for child in self.grid_widget.findChildren(MonthDayCell):
-            child.setParent(None)
+            child.hide()
             child.deleteLater()
             
         # Calculate start of grid (Monday of the week containing 1st of month)

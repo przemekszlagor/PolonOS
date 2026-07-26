@@ -1,6 +1,10 @@
 import sys
 import os
 import argparse
+
+# Disable xdg-desktop-portal to prevent QDBus connection registration error and crash on Linux
+os.environ["QT_NO_PORTAL"] = "1"
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtNetwork import QLocalServer, QLocalSocket

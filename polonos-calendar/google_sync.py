@@ -408,16 +408,24 @@ class GoogleCalendarSync:
                     self.db.clear_events_for_calendar(cal['id'])
                     continue
                 
-                # Fetch events
-                events_result = service.events().list(
-                    calendarId=cal['id'],
-                    timeMin=time_min,
-                    timeMax=time_max,
-                    singleEvents=True,
-                    orderBy='startTime'
-                ).execute()
+                # Fetch events with pagination support to fetch all events in range
+                events_items = []
+                page_token = None
+                while True:
+                    events_result = service.events().list(
+                        calendarId=cal['id'],
+                        timeMin=time_min,
+                        timeMax=time_max,
+                        singleEvents=True,
+                        orderBy='startTime',
+                        maxResults=250,
+                        pageToken=page_token
+                    ).execute()
+                    events_items.extend(events_result.get('items', []))
+                    page_token = events_result.get('nextPageToken')
+                    if not page_token:
+                        break
                 
-                events_items = events_result.get('items', [])
                 db_events = []
                 
                 # Clear existing events for this calendar to prevent orphans

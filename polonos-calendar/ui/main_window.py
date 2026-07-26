@@ -4,15 +4,86 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QPushButton, QScrollArea, QFrame, 
                              QStackedWidget, QDialog, QFileDialog, QCheckBox,
                              QMessageBox, QSystemTrayIcon, QMenu, QGraphicsDropShadowEffect,
-                             QLineEdit, QApplication, QColorDialog, QSpinBox)
-from PySide6.QtCore import Qt, QThread, Signal, QSize, QUrl, QTimer
-from PySide6.QtGui import QIcon, QAction, QColor, QCursor, QPixmap, QDesktopServices
+                             QLineEdit, QApplication, QColorDialog, QSpinBox,
+                             QAbstractButton, QSizePolicy)
+from PySide6.QtCore import Qt, QThread, Signal, QSize, QUrl, QTimer, QPropertyAnimation, Property, QEasingCurve, QRectF
+from PySide6.QtGui import QIcon, QAction, QColor, QCursor, QPixmap, QDesktopServices, QPainter, QPen, QBrush
 
 from src.database import DatabaseManager
 from src.google_sync import GoogleCalendarSync
 from src.ui.calendar_views import DayView, WeekView, MonthView
 from src.ui.systray_popup import SystrayPopup
-from src.ui.styles import DARK_STYLE
+from src.ui.styles import (DARK_STYLE, POLONOS_STYLE, LIGHT_STYLE, get_system_style,
+                           is_system_dark_mode)
+
+class ToggleSwitch(QAbstractButton):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCheckable(True)
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self._offset = 3
+        self._color_on = QColor("#c22e45")   # Crimson (PolonOS)
+        self._color_off = QColor("#52525b")  # Dark grey (System)
+        self._color_bg = QColor("#27272a")   # Dark bg
+        self._thumb_color = QColor("#ffffff")
+        
+        self.anim = QPropertyAnimation(self, b"offset", self)
+        self.anim.setDuration(120)
+        self.anim.setEasingCurve(QEasingCurve.InOutQuad)
+        
+    @Property(float)
+    def offset(self):
+        return self._offset
+        
+    @offset.setter
+    def offset(self, val):
+        self._offset = val
+        self.update()
+        
+    def sizeHint(self):
+        return QSize(46, 22)
+        
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Draw background pill
+        rect = QRectF(0.0, 0.0, float(self.width()), float(self.height()))
+        r = rect.height() / 2.0
+        
+        bg_color = self._color_on if self.isChecked() else self._color_bg
+        painter.setBrush(QBrush(bg_color))
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(rect, r, r)
+        
+        # Border
+        border_pen = QPen(QColor("#3f3f46") if not self.isChecked() else QColor("#c22e45"), 1)
+        painter.setPen(border_pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), r, r)
+        
+        # Draw thumb
+        thumb_size = self.height() - 6
+        thumb_rect = QRectF(float(self._offset), 3.0, float(thumb_size), float(thumb_size))
+        painter.setBrush(QBrush(self._thumb_color))
+        painter.setPen(Qt.NoPen)
+        painter.drawEllipse(thumb_rect)
+        
+    def nextCheckState(self):
+        self.setChecked(not self.isChecked())
+        
+    def setChecked(self, checked):
+        super().setChecked(checked)
+        start = self._offset
+        end = self.sizeHint().width() - self.sizeHint().height() + 3 if checked else 3
+        if self.isVisible():
+            self.anim.stop()
+            self.anim.setStartValue(start)
+            self.anim.setEndValue(end)
+            self.anim.start()
+        else:
+            self._offset = end
+            self.update()
 
 PL_MONTHS = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"]
 PL_MONTHS_GEN = ["stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia", "września", "października", "listopada", "grudnia"]
@@ -239,7 +310,7 @@ class AuthDialog(QDialog):
         self.sync_manager = sync_manager
         self.login_worker = None
         self.setWindowTitle("Dodaj konto Google")
-        self.setFixedSize(450, 260)
+        self.setFixedSize(450, 180)
         self.setObjectName("auth_dialog")
         
         self.layout = QVBoxLayout(self)
@@ -266,19 +337,19 @@ class AuthDialog(QDialog):
         self.layout.addWidget(self.status_lbl)
         
         # Buttons layout
-        self.btn_layout = QVBoxLayout()
+        self.btn_layout = QHBoxLayout()
         self.btn_layout.setSpacing(10)
         
-        self.login_btn = QPushButton("Zaloguj przez Google (Otwórz przeglądarkę)", self)
+        self.login_btn = QPushButton("Zaloguj przez Google", self)
         self.login_btn.setObjectName("primary_btn")
         self.login_btn.clicked.connect(self._on_login_clicked)
-        
         self.btn_layout.addWidget(self.login_btn)
-        self.layout.addLayout(self.btn_layout)
         
         self.close_btn = QPushButton("Anuluj", self)
         self.close_btn.clicked.connect(self.reject)
-        self.layout.addWidget(self.close_btn)
+        self.btn_layout.addWidget(self.close_btn)
+        
+        self.layout.addLayout(self.btn_layout)
 
     def _on_login_clicked(self):
         # Prevent starting multiple flows
@@ -296,7 +367,6 @@ class AuthDialog(QDialog):
         self.login_worker.start()
 
     def _on_open_url(self, url):
-        # Open URL safely in the main thread using webbrowser first, then QDesktopServices
         try:
             import webbrowser
             webbrowser.open(url, new=1, autoraise=True)
@@ -329,7 +399,7 @@ class MainWindow(QMainWindow):
         
         self.setWindowTitle("PolonOS Calendar")
         self.resize(1100, 750)
-        self.setStyleSheet(DARK_STYLE)
+        self.setMinimumSize(900, 600)
         
         # Set Window Icon using Logo
         logo_path = get_logo_path()
@@ -340,7 +410,17 @@ class MainWindow(QMainWindow):
         self.central_widget = QWidget(self)
         self.setCentralWidget(self.central_widget)
         
-        self.main_layout = QHBoxLayout(self.central_widget)
+        # Outer vertical layout
+        self.outer_layout = QVBoxLayout(self.central_widget)
+        self.outer_layout.setContentsMargins(0, 0, 0, 0)
+        self.outer_layout.setSpacing(0)
+        
+        # Setup top bar
+        self._setup_top_bar()
+        
+        # Inner horizontal layout container
+        self.inner_widget = QWidget(self.central_widget)
+        self.main_layout = QHBoxLayout(self.inner_widget)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
         
@@ -350,14 +430,139 @@ class MainWindow(QMainWindow):
         self._setup_systray()
         self.setup_notifications()
         
+        self.outer_layout.addWidget(self.inner_widget, 1)
+        
         # Load initial data
         self.reload_accounts_and_calendars()
-        self.refresh_calendar_view()
+        self.apply_selected_theme()
         self.start_startup_sync()
+
+    def _setup_top_bar(self):
+        self.top_bar = QFrame(self.central_widget)
+        self.top_bar.setObjectName("top_bar")
+        self.top_bar.setFixedHeight(50)
+        
+        top_layout = QHBoxLayout(self.top_bar)
+        top_layout.setContentsMargins(20, 5, 20, 5)
+        
+        # Brand label
+        logo_lbl = QLabel("PolonOS Calendar", self.top_bar)
+        logo_lbl.setStyleSheet("font-weight: bold; font-size: 15px; letter-spacing: 0.5px;")
+        top_layout.addWidget(logo_lbl)
+        
+        top_layout.addStretch()
+        
+        # Switch controls container
+        controls_layout = QHBoxLayout()
+        controls_layout.setSpacing(8)
+        
+        # Quick manual sync button
+        self.sync_all_btn = QPushButton("Synchronizuj chmurę", self.top_bar)
+        self.sync_all_btn.setStyleSheet("""
+            QPushButton {
+                font-size: 11px;
+                color: #ffffff;
+                border: 1px solid #7f1d1d;
+                background-color: #991b1b;
+                font-weight: bold;
+                border-radius: 4px;
+                padding: 4px 10px;
+            }
+            QPushButton:hover {
+                background-color: #b91c1c;
+            }
+        """)
+        self.sync_all_btn.clicked.connect(self.sync_all_accounts)
+        controls_layout.addWidget(self.sync_all_btn)
+        
+        # Notifications config button
+        self.notifications_btn = QPushButton("Powiadomienia", self.top_bar)
+        self.notifications_btn.setStyleSheet("""
+            QPushButton {
+                font-size: 11px;
+                color: #ffffff;
+                border: 1px solid #7f1d1d;
+                background-color: #991b1b;
+                font-weight: bold;
+                border-radius: 4px;
+                padding: 4px 10px;
+            }
+            QPushButton:hover {
+                background-color: #b91c1c;
+            }
+        """)
+        self.notifications_btn.clicked.connect(self.show_notification_settings)
+        controls_layout.addWidget(self.notifications_btn)
+        
+        controls_layout.addSpacing(8)
+        
+        theme_lbl = QLabel("Kolorystyka:", self.top_bar)
+        theme_lbl.setStyleSheet("font-size: 13px; color: #71717a; font-weight: 500; margin-right: 4px;")
+        controls_layout.addWidget(theme_lbl)
+        
+        self.sys_theme_lbl = QLabel("Jasny", self.top_bar)
+        controls_layout.addWidget(self.sys_theme_lbl)
+        
+        # Switch toggle
+        self.theme_switch = ToggleSwitch(self.top_bar)
+        is_polonos = self.db.get_setting("theme_mode", "jasny") in ("polonos", "ciemny")
+        self.theme_switch.setChecked(is_polonos)
+        self.theme_switch.clicked.connect(self._on_theme_switch_clicked)
+        controls_layout.addWidget(self.theme_switch)
+        
+        self.polonos_theme_lbl = QLabel("Ciemny", self.top_bar)
+        controls_layout.addWidget(self.polonos_theme_lbl)
+        
+        top_layout.addLayout(controls_layout)
+        self.outer_layout.addWidget(self.top_bar)
+        
+        # Initial labels highlight
+        self._update_theme_labels(is_polonos)
+
+    def _update_theme_labels(self, is_polonos):
+        if is_polonos:
+            self.sys_theme_lbl.setStyleSheet("font-size: 13px; font-weight: normal; color: #71717a;")
+            self.polonos_theme_lbl.setStyleSheet("font-size: 13px; font-weight: bold; color: #c22e45;")
+        else:
+            self.sys_theme_lbl.setStyleSheet("font-size: 13px; font-weight: bold; color: #e15265;")
+            self.polonos_theme_lbl.setStyleSheet("font-size: 13px; font-weight: normal; color: #71717a;")
+
+    def _on_theme_switch_clicked(self, checked):
+        theme_mode = "ciemny" if checked else "jasny"
+        self.db.set_setting("theme_mode", theme_mode)
+        self._update_theme_labels(checked)
+        self.apply_selected_theme()
+
+    def apply_selected_theme(self):
+        theme_mode = self.db.get_setting("theme_mode", "jasny")
+        # Map legacy names if they exist in DB
+        if theme_mode == "polonos":
+            theme_mode = "ciemny"
+        elif theme_mode == "system":
+            theme_mode = "jasny"
+            
+        QApplication.instance().setProperty("theme_mode", theme_mode)
+        
+        if theme_mode == "ciemny":
+            style = POLONOS_STYLE
+        else:
+            style = LIGHT_STYLE
+        self.setStyleSheet(style)
+        
+        # Sync color classes of tray menu if created
+        if hasattr(self, 'tray_menu') and self.tray_menu:
+            if theme_mode == "ciemny":
+                self.tray_menu.setStyleSheet("background-color: #1e1e1e; color: #f4f4f5; border: 1px solid #2d2d2d;")
+            else:
+                self.tray_menu.setStyleSheet("background-color: #ffffff; color: #18181b; border: 1px solid #e4e4e7;")
+                    
+        # Refresh widgets/views
+        self.refresh_calendar_view()
 
     def _setup_sidebar(self):
         self.sidebar = QFrame(self)
         self.sidebar.setObjectName("sidebar")
+        self.sidebar.setFixedWidth(280)
         
         sidebar_layout = QVBoxLayout(self.sidebar)
         sidebar_layout.setContentsMargins(15, 20, 15, 15)
@@ -382,6 +587,7 @@ class MainWindow(QMainWindow):
         self.accounts_scroll = QScrollArea(self.sidebar)
         self.accounts_scroll.setWidgetResizable(True)
         self.accounts_scroll.setFrameShape(QFrame.NoFrame)
+        self.accounts_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.accounts_scroll.setStyleSheet("background: transparent;")
         
         self.accounts_container = QWidget(self.sidebar)
@@ -394,6 +600,19 @@ class MainWindow(QMainWindow):
         self.accounts_scroll.setWidget(self.accounts_container)
         sidebar_layout.addWidget(self.accounts_scroll)
         
+        # Autostart checkbox
+        self.autostart_cb = QCheckBox("Autostart", self.sidebar)
+        self.autostart_cb.setStyleSheet("font-size: 12px; font-weight: bold;")
+        sidebar_layout.addWidget(self.autostart_cb)
+        
+        # Check initial autostart state
+        autostart_enabled = self.db.get_setting("autostart", "1") == "1"
+        self.autostart_cb.setChecked(autostart_enabled)
+        # Call set_autostart to synchronize the desktop file state
+        self.set_autostart(autostart_enabled)
+        
+        self.autostart_cb.toggled.connect(self.set_autostart)
+        
         # Add account button
         self.add_account_btn = QPushButton("Dodaj konto Google", self.sidebar)
         self.add_account_btn.setObjectName("primary_btn")
@@ -401,6 +620,33 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.add_account_btn)
         
         self.main_layout.addWidget(self.sidebar)
+
+    def set_autostart(self, enabled):
+        import os
+        import shutil
+        autostart_dir = os.path.expanduser("~/.config/autostart")
+        desktop_file_path = os.path.join(autostart_dir, "polonos-calendar.desktop")
+        
+        if enabled:
+            try:
+                os.makedirs(autostart_dir, exist_ok=True)
+                system_desktop = "/usr/share/applications/polonos-calendar.desktop"
+                if os.path.exists(system_desktop):
+                    shutil.copy(system_desktop, desktop_file_path)
+                else:
+                    # Fallback write custom desktop entry if system one is missing during testing
+                    with open(desktop_file_path, "w") as f:
+                        f.write("[Desktop Entry]\nName=PolonOS Calendar\nComment=Menedzer Kalendarza Google (systray)\nExec=/usr/bin/polonos-calendar\nIcon=polonos-calendar\nTerminal=false\nType=Application\nCategories=Office;Calendar;Utility;\nStartupNotify=true\n")
+                self.db.set_setting("autostart", "1")
+            except Exception as e:
+                print(f"Error setting autostart: {e}")
+        else:
+            try:
+                if os.path.exists(desktop_file_path):
+                    os.remove(desktop_file_path)
+                self.db.set_setting("autostart", "0")
+            except Exception as e:
+                print(f"Error removing autostart: {e}")
 
     def _setup_calendar_area(self):
         self.calendar_area = QFrame(self)
@@ -439,17 +685,7 @@ class MainWindow(QMainWindow):
         
         nav_layout.addStretch()
         
-        # Quick manual sync button
-        self.sync_all_btn = QPushButton("Synchronizuj chmurę", self.nav_bar)
-        self.sync_all_btn.setStyleSheet("font-size: 12px; color: #38bdf8; border-color: #0369a1; background-color: #0c1e2d;")
-        self.sync_all_btn.clicked.connect(self.sync_all_accounts)
-        nav_layout.addWidget(self.sync_all_btn)
-        
-        # Notifications config button
-        self.notifications_btn = QPushButton("POWIADOMIENIA", self.nav_bar)
-        self.notifications_btn.setStyleSheet("font-size: 12px; color: #a7f3d0; border-color: #065f46; background-color: #064e3b;")
-        self.notifications_btn.clicked.connect(self.show_notification_settings)
-        nav_layout.addWidget(self.notifications_btn)
+        # Quick manual sync and notifications buttons moved to top_bar
         
         # View switcher Control
         self.view_switch_layout = QHBoxLayout()
@@ -668,7 +904,7 @@ class MainWindow(QMainWindow):
         # Clear sidebar list
         # Remove widgets from accounts layout except the bottom spacer
         for child in self.accounts_container.findChildren(QFrame):
-            child.setParent(None)
+            child.hide()
             child.deleteLater()
             
         accounts = self.db.get_accounts()
@@ -683,22 +919,24 @@ class MainWindow(QMainWindow):
         # Build list of accounts
         for acc in accounts:
             acc_frame = QFrame(self.accounts_container)
-            acc_frame.setStyleSheet("""
-                QFrame {
-                    background-color: #18181b;
-                    border: 1px solid #27272a;
-                    border-radius: 8px;
-                }
-            """)
+            acc_frame.setObjectName("account_card")
             acc_layout = QVBoxLayout(acc_frame)
             acc_layout.setContentsMargins(8, 8, 8, 8)
             acc_layout.setSpacing(6)
             
             # Account Header
             header_layout = QHBoxLayout()
-            email_lbl = QLabel(acc['display_name'] or acc['email'], acc_frame)
-            email_lbl.setStyleSheet("color: #ffffff; font-weight: bold; font-size: 11px;")
-            header_layout.addWidget(email_lbl, 1)
+            email_lbl = QLabel(acc_frame)
+            email_lbl.setObjectName("account_email_label")
+            
+            # Elide account display name to end with ".." if too long
+            from PySide6.QtGui import QFontMetrics
+            fm = QFontMetrics(email_lbl.font())
+            display_name = acc['display_name'] or acc['email']
+            elided_name = fm.elidedText(display_name, Qt.ElideRight, 165)
+            if elided_name.endswith("..."):
+                elided_name = elided_name[:-3] + ".."
+            email_lbl.setText(elided_name)
             
             # Delete button
             del_btn = QPushButton("Usuń", acc_frame)
@@ -713,7 +951,10 @@ class MainWindow(QMainWindow):
                 }
             """)
             del_btn.clicked.connect(lambda checked=False, email=acc['email']: self.remove_account(email))
+            
+            # Place delete button BEFORE the label
             header_layout.addWidget(del_btn)
+            header_layout.addWidget(email_lbl, 1)
             
             acc_layout.addLayout(header_layout)
             
@@ -722,24 +963,33 @@ class MainWindow(QMainWindow):
             for cal in calendars:
                 cal_layout = QHBoxLayout()
                 cal_layout.setContentsMargins(4, 0, 4, 0)
+                cal_layout.setSpacing(6)
                 
-                cb = QCheckBox(cal['summary'], acc_frame)
+                cb = QCheckBox("", acc_frame)
                 cb.setChecked(bool(cal['selected']))
-                cb.setStyleSheet("font-size: 11px; color: #d4d4d8;")
+                cb.setStyleSheet("font-size: 11px;")
                 # Update database on checkbox toggle
                 cb.toggled.connect(
                     lambda checked, cid=cal['id']: self.on_calendar_toggled(cid, checked)
                 )
                 
-                # Clickable color indicator button next to it
+                # Elide calendar name to end with ".." if too long
+                from PySide6.QtGui import QFontMetrics
+                fm = QFontMetrics(cb.font())
+                elided_name = fm.elidedText(cal['summary'], Qt.ElideRight, 175)
+                if elided_name.endswith("..."):
+                    elided_name = elided_name[:-3] + ".."
+                cb.setText(elided_name)
+                
+                # Clickable color indicator square button before the checkbox
                 color_btn = QPushButton(acc_frame)
                 color_btn.setFixedSize(QSize(12, 12))
                 color_btn.setCursor(Qt.PointingHandCursor)
                 color_btn.setStyleSheet(f"""
                     QPushButton {{
                         background-color: {cal['color']};
-                        border-radius: 6px;
-                        border: 1px solid #111111;
+                        border-radius: 2px;
+                        border: 1px solid #71717a;
                         max-width: 12px;
                         max-height: 12px;
                         min-width: 12px;
@@ -755,8 +1005,8 @@ class MainWindow(QMainWindow):
                     lambda checked=False, cid=cal['id'], curr_color=cal['color']: self.on_change_color_clicked(cid, curr_color)
                 )
                 
-                cal_layout.addWidget(cb, 1)
                 cal_layout.addWidget(color_btn)
+                cal_layout.addWidget(cb, 1)
                 acc_layout.addLayout(cal_layout)
                 
             self.accounts_layout.insertWidget(self.accounts_layout.count() - 1, acc_frame)
@@ -857,8 +1107,29 @@ class MainWindow(QMainWindow):
         self.stacked_views.setCurrentIndex(index)
         
         # Reset button styling to act as separate buttons
-        normal_qss = "QPushButton { background-color: #27272a; border: 1px solid #3f3f46; color: #f4f4f5; border-radius: 6px; padding: 6px 12px; font-weight: 500; }"
-        selected_qss = "QPushButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #6366f1, stop:1 #4f46e5); border: none; color: #ffffff; font-weight: bold; border-radius: 6px; padding: 6px 12px; }"
+        normal_qss = """
+            QPushButton {
+                background-color: #18181b;
+                border: 1px solid #27272a;
+                color: #ffffff;
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #27272a;
+            }
+        """
+        selected_qss = """
+            QPushButton {
+                background-color: #52525b;
+                border: 1px solid #3f3f46;
+                color: #ffffff;
+                font-weight: bold;
+                border-radius: 6px;
+                padding: 6px 12px;
+            }
+        """
         
         self.day_btn.setStyleSheet(normal_qss)
         self.week_btn.setStyleSheet(normal_qss)
