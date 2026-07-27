@@ -13,7 +13,7 @@ from src.database import DatabaseManager
 from src.google_sync import GoogleCalendarSync
 from src.ui.calendar_views import DayView, WeekView, MonthView
 from src.ui.systray_popup import SystrayPopup
-from src.ui.styles import (DARK_STYLE, POLONOS_STYLE, LIGHT_STYLE, get_system_style,
+from src.ui.styles import (POLONOS_STYLE, LIGHT_STYLE, get_system_style,
                            is_system_dark_mode)
 
 class ToggleSwitch(QAbstractButton):
