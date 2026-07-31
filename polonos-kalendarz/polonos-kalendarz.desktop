@@ -1,8 +1,8 @@
 [Desktop Entry]
-Name=PolonOS Calendar
+Name=PolonOS Kalendarz
 Comment=Menedżer Kalendarza Google (systray)
-Exec=/usr/bin/polonos-calendar
-Icon=polonos-calendar
+Exec=/usr/bin/polonos-kalendarz
+Icon=polonos-kalendarz
 Terminal=false
 Type=Application
 Categories=Office;Calendar;Utility;

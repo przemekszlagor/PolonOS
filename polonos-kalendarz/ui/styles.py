@@ -1,4 +1,4 @@
-# Stylesheet definitions for PolonOS Calendar
+# Stylesheet definitions for PolonOS Kalendarz
 # High-quality dark UI stylesheet mimicking premium modern web apps.
 import os
 

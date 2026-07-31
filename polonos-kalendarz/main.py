@@ -17,17 +17,17 @@ from src.google_sync import GoogleCalendarSync
 from src.ui.main_window import MainWindow
 
 def main():
-    parser = argparse.ArgumentParser(description="PolonOS Calendar - Menedżer Kalendarza Google")
+    parser = argparse.ArgumentParser(description="PolonOS Kalendarz - Menedżer Kalendarza Google")
     parser.add_argument("--demo", action="store_true", help="Dodaje konto demo przy uruchomieniu, jeśli baza jest pusta")
     args = parser.parse_args()
 
     app = QApplication(sys.argv)
-    app.setApplicationName("PolonOS Calendar")
-    app.setApplicationDisplayName("PolonOS Calendar")
-    app.setDesktopFileName("polonos-calendar")
+    app.setApplicationName("PolonOS Kalendarz")
+    app.setApplicationDisplayName("PolonOS Kalendarz")
+    app.setDesktopFileName("polonos-kalendarz")
     
     # Single Instance check using QLocalServer/QLocalSocket
-    socket_name = "polonos-calendar-single-instance-socket"
+    socket_name = "polonos-kalendarz-single-instance-socket"
     socket = QLocalSocket()
     socket.connectToServer(socket_name)
     if socket.waitForConnected(300):
@@ -49,14 +49,14 @@ def main():
     
     def get_logo_path():
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        logo_path = os.path.join(base_dir, "ui", "polonos-calendar-logo.png")
+        logo_path = os.path.join(base_dir, "ui", "polonos-kalendarz-logo.png")
         if os.path.exists(logo_path):
             return logo_path
         
         # System fallbacks
         fallbacks = [
-            "/opt/polonos-calendar/src/ui/polonos-calendar-logo.png",
-            "/usr/share/pixmaps/polonos-calendar.png"
+            "/opt/polonos-kalendarz/src/ui/polonos-kalendarz-logo.png",
+            "/usr/share/pixmaps/polonos-kalendarz.png"
         ]
         for p in fallbacks:
             if os.path.exists(p):

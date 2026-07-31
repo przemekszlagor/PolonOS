@@ -159,6 +159,29 @@
                     </div>
                 </div>
 
+                <!-- Speedtest Card -->
+                <div class="speedtest-card" id="speedtest-card">
+                    <div class="speedtest-header">
+                        <h3>TEST PRĘDKOŚCI ŁĄCZA</h3>
+                        <button class="speedtest-btn" id="speedtest-btn" onclick="startSpeedtest()">Uruchom Speedtest</button>
+                    </div>
+                    <div class="speedtest-body" id="speedtest-body" style="display: none;">
+                        <div class="speedtest-progress-bar-container">
+                            <div class="speedtest-progress-bar" id="speedtest-progress-bar"></div>
+                        </div>
+                        <div class="speedtest-results">
+                            <div class="speedtest-stat">
+                                <span class="speedtest-lbl">Pobieranie (Speedtest)</span>
+                                <span class="speedtest-val" id="speedtest-down">- Mb/s</span>
+                            </div>
+                            <div class="speedtest-stat">
+                                <span class="speedtest-lbl">Wysyłanie (Speedtest)</span>
+                                <span class="speedtest-val" id="speedtest-up">- Mb/s</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Real-time Chart -->
                 <div class="chart-card">
                     <div class="chart-header">

@@ -12,14 +12,14 @@ SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 
 # Domyślne klucze Google OAuth 2.0 (aplikacja Desktop)
 # Możesz wkleić tutaj swoje klucze, aby logowanie działało natychmiast po kliknięciu
-CLIENT_ID = "YOUR_CLIENT_ID_HERE.apps.googleusercontent.com"
-CLIENT_SECRET = "YOUR_CLIENT_SECRET_HERE"
+CLIENT_ID = "992395622709-kl71ebonoqocjcjq1dg66miakirokjvj.apps.googleusercontent.com"
+CLIENT_SECRET = "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"
 
 class GoogleCalendarSync:
     def __init__(self, db_manager, credentials_path=None):
         self.db = db_manager
         if credentials_path is None:
-            config_dir = os.path.expanduser("~/.config/polonos-calendar")
+            config_dir = os.path.expanduser("~/.config/polonos-kalendarz")
             credentials_path = os.path.join(config_dir, "credentials.json")
         self.credentials_path = credentials_path
 
@@ -42,9 +42,13 @@ class GoogleCalendarSync:
             c_sec = CLIENT_SECRET
             
         # 3. Sprawdź plik credentials.json (szukaj w kilku lokalizacjach)
-        if (not c_id or not c_sec) or ("YOUR_CLIENT_ID_HERE" in c_id):
+        if (not c_id or not c_sec) or ("YOUR_CLIENT_ID_HERE" in str(c_id)):
             possible_paths = [
                 self.credentials_path,
+                os.path.expanduser("~/.config/polonos-kalendarz/credentials.json"),
+                os.path.expanduser("~/.config/polonos-calendar/credentials.json"),
+                "/opt/polonos-kalendarz/credentials.json",
+                "/opt/polonos-calendar/credentials.json",
                 "credentials.json",
                 os.path.join(os.path.expanduser("~"), "credentials.json"),
                 os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "credentials.json")
@@ -67,7 +71,7 @@ class GoogleCalendarSync:
             raise ValueError(
                 "Brak poprawnych kluczy Google OAuth.\n"
                 "Uzupełnij CLIENT_ID i CLIENT_SECRET w pliku src/google_sync.py,\n"
-                "wgraj plik credentials.json do katalogu projektu lub ~/.config/polonos-calendar/."
+                "wgraj plik credentials.json do katalogu projektu lub ~/.config/polonos-kalendarz/."
             )
 
         client_config = {

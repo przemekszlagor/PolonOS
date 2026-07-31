@@ -94,9 +94,9 @@ class RealtimeChart {
             ctx.fillText(((maxVal / gridLines) * i).toFixed(1) + ' M', 5, y + 4);
         }
         
-        // Plot curves (Down = Red, Up = Silver)
-        this.drawLine(this.downData, '#bd1e1a', 'rgba(189, 30, 26, 0.06)', maxVal);
-        this.drawLine(this.upData, '#eceef1', 'rgba(236, 238, 241, 0.05)', maxVal);
+        // Plot curves (Down = Red Carbon, Up = Silver)
+        this.drawLine(this.downData, '#c22e45', 'rgba(194, 46, 69, 0.06)', maxVal);
+        this.drawLine(this.upData, '#d8dce2', 'rgba(216, 220, 226, 0.05)', maxVal);
     }
     
     drawLine(data, strokeColor, fillColor, maxVal) {
@@ -150,7 +150,13 @@ class RealtimeChart {
 // Communications
 function postToPython(message) {
     try {
-        window.webkit.message_handlers.app.postMessage(JSON.stringify(message));
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.app) {
+            window.webkit.messageHandlers.app.postMessage(JSON.stringify(message));
+        } else if (window.webkit && window.webkit.message_handlers && window.webkit.message_handlers.app) {
+            window.webkit.message_handlers.app.postMessage(JSON.stringify(message));
+        } else {
+            console.error('No python message handler found');
+        }
     } catch (e) {
         console.error('Failed to post message to Python:', e);
     }
@@ -169,6 +175,9 @@ window.addEventListener('polonosnetmonitor-event', (e) => {
                 break;
             case 'ip-details':
                 handleIpDetails(payload);
+                break;
+            case 'speedtest-update':
+                handleSpeedtestUpdate(payload);
                 break;
         }
     } catch (err) {
@@ -239,5 +248,47 @@ document.addEventListener('DOMContentLoaded', () => {
         if (chartInstance) chartInstance.resize();
     }, 150);
     
-    postToPython({ action: 'get-ip-details' });
+    setTimeout(() => {
+        const hasHandlers = (window.webkit && (window.webkit.messageHandlers || window.webkit.message_handlers));
+        document.title = hasHandlers ? "webkit-ok" : "webkit-undefined";
+        postToPython({ action: 'get-ip-details' });
+    }, 500);
 });
+
+// Speedtest logic
+function startSpeedtest() {
+    const btn = document.getElementById('speedtest-btn');
+    const body = document.getElementById('speedtest-body');
+    const progress = document.getElementById('speedtest-progress-bar');
+    const downVal = document.getElementById('speedtest-down');
+    const upVal = document.getElementById('speedtest-up');
+
+    btn.disabled = true;
+    btn.innerText = 'Testuję...';
+    body.style.display = 'flex';
+    progress.style.width = '0%';
+    downVal.innerText = '- Mb/s';
+    upVal.innerText = '- Mb/s';
+
+    postToPython({ action: 'run-speedtest' });
+}
+
+function handleSpeedtestUpdate(payload) {
+    const btn = document.getElementById('speedtest-btn');
+    const progress = document.getElementById('speedtest-progress-bar');
+    const downVal = document.getElementById('speedtest-down');
+    const upVal = document.getElementById('speedtest-up');
+
+    progress.style.width = payload.progress + '%';
+
+    if (payload.status === 'downloading') {
+        downVal.innerText = payload.speed.toFixed(1) + ' Mb/s';
+    } else if (payload.status === 'uploading') {
+        upVal.innerText = payload.speed.toFixed(1) + ' Mb/s';
+    } else if (payload.status === 'complete') {
+        downVal.innerText = payload.speed.download.toFixed(1) + ' Mb/s';
+        upVal.innerText = payload.speed.upload.toFixed(1) + ' Mb/s';
+        btn.disabled = false;
+        btn.innerText = 'Uruchom Speedtest';
+    }
+}

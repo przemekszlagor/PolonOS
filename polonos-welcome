@@ -54,6 +54,27 @@ def mark_app_as_installed(app_id):
 
 def is_app_installed(app_id, app_type="apt"):
     """Sprawdza, czy program jest zainstalowany (poprzez plik konfiguracyjny, dpkg lub flatpak)."""
+    # Sprawdzenie specyficzne dla SageMath zainstalowanego przez Condę
+    if app_id == "sagemath":
+        sage_path = os.path.expanduser("~/.miniconda3/envs/sage/bin/sage")
+        if os.path.exists(sage_path):
+            mark_app_as_installed(app_id)
+            return True
+        return False
+
+
+    if app_id in ("wine", "winehq-staging"):
+        if os.path.exists("/usr/bin/wine") or "wine" in get_manually_installed_apps() or "winehq-staging" in get_manually_installed_apps():
+            mark_app_as_installed(app_id)
+            return True
+        try:
+            res = subprocess.run(["dpkg-query", "-W", "-f=${Status}", "winehq-staging"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2)
+            if "install ok installed" in res.stdout:
+                mark_app_as_installed(app_id)
+                return True
+        except Exception:
+            pass
+
     # 1. Sprawdź plik konfiguracyjny
     if app_id in get_manually_installed_apps():
         return True
@@ -536,16 +557,16 @@ class SidebarWidget(QFrame):
             painter.drawPixmap(x, y, scaled)
             
             # Semi-transparent dark overlay (frost effect overlay with 84% opacity)
-            painter.fillRect(self.rect(), QColor(17, 21, 27, 215))
+            painter.fillRect(self.rect(), QColor(30, 30, 30, 215))
         else:
             # Fallback to dark elegant gradient
             gradient = QLinearGradient(0, 0, 0, self.height())
-            gradient.setColorAt(0.0, QColor(11, 15, 23))
-            gradient.setColorAt(1.0, QColor(7, 10, 15))
+            gradient.setColorAt(0.0, QColor(30, 30, 30))
+            gradient.setColorAt(1.0, QColor(22, 22, 22))
             painter.fillRect(self.rect(), gradient)
             
         # Draw border
-        painter.setPen(QPen(QColor(30, 41, 59), 1))
+        painter.setPen(QPen(QColor(45, 45, 45), 1))
         painter.drawLine(self.width() - 1, 0, self.width() - 1, self.height())
 
 # --- GRAPHICAL INSTALLATION PROGRESS DIALOG ---
@@ -559,51 +580,51 @@ class ProgressDialog(QtWidgets.QDialog):
         # Style matching the premium dark theme
         self.setStyleSheet("""
             QDialog {
-                background-color: #0b0f17;
+                background-color: #161616;
             }
             QLabel {
-                color: #f8fafc;
+                color: #f4f4f5;
                 font-size: 13px;
             }
             QProgressBar {
-                border: 1px solid #1e293b;
+                border: 1px solid #2d2d2d;
                 border-radius: 6px;
-                background-color: #0f172a;
+                background-color: #1e1e1e;
                 text-align: center;
                 color: #ffffff;
                 font-weight: bold;
                 height: 22px;
             }
             QProgressBar::chunk {
-                background-color: #38bdf8;
+                background-color: #c22e45;
                 border-radius: 5px;
             }
             QPlainTextEdit {
-                background-color: #0f172a;
+                background-color: #121215;
                 color: #34d399;
                 font-family: 'Hack', 'Noto Mono', 'Courier New', monospace;
                 font-size: 11px;
-                border: 1px solid #1e293b;
+                border: 1px solid #2d2d2d;
                 border-radius: 6px;
                 padding: 8px;
             }
             QPushButton {
-                background-color: #1e293b;
-                color: #f8fafc;
-                border: 1px solid #334155;
+                background-color: #242424;
+                color: #f4f4f5;
+                border: 1px solid #2d2d2d;
                 border-radius: 6px;
                 padding: 8px 18px;
                 font-size: 13px;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #334155;
-                border-color: #38bdf8;
+                background-color: #2d2d2d;
+                border-color: #9b1b30;
             }
             QPushButton:disabled {
-                background-color: #0f172a;
-                color: #64748b;
-                border-color: #1e293b;
+                background-color: #1e1e1e;
+                color: #5e646d;
+                border-color: #2d2d2d;
             }
         """)
         
@@ -612,7 +633,7 @@ class ProgressDialog(QtWidgets.QDialog):
         layout.setSpacing(15)
         
         self.lbl_status = QLabel("Przygotowanie do instalacji...")
-        self.lbl_status.setStyleSheet("font-weight: bold; font-size: 14px; color: #38bdf8;")
+        self.lbl_status.setStyleSheet("font-weight: bold; font-size: 14px; color: #c22e45;")
         layout.addWidget(self.lbl_status)
         
         self.progress_bar = QProgressBar()
@@ -636,6 +657,7 @@ class ProgressDialog(QtWidgets.QDialog):
         
         self.command = command
         self.args = args
+        self.install_success = False
         
     def showEvent(self, event):
         super().showEvent(event)
@@ -677,6 +699,7 @@ class ProgressDialog(QtWidgets.QDialog):
             self.progress_bar.setValue(100)
             self.lbl_status.setText("Instalacja zakończona pomyślnie!")
             self.console.appendPlainText("\n[PolonOS] Proces zakończony sukcesem.")
+            self.install_success = True
         else:
             self.lbl_status.setText("Instalacja nie powiodła się.")
             if exit_code == 127:  # pkexec cancelled/dismissed
@@ -691,39 +714,39 @@ class NvidiaDriverDialog(QtWidgets.QDialog):
     def __init__(self, stable_ver=None, latest_ver=None, is_legacy=False, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Sterownik karty graficznej NVIDIA")
-        self.setFixedSize(500, 390)
+        self.setFixedSize(650, 410)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         
         # Style matching the premium dark theme
         self.setStyleSheet("""
             QDialog {
-                background-color: #0b0f17;
+                background-color: #161616;
             }
             QLabel {
-                color: #f8fafc;
+                color: #f4f4f5;
                 font-size: 13px;
             }
             QRadioButton {
-                color: #f8fafc;
+                color: #f4f4f5;
                 font-size: 13px;
                 spacing: 8px;
             }
             QRadioButton::indicator {
                 width: 18px;
                 height: 18px;
-                border: 1px solid #475569;
+                border: 1.5px solid #2d2d2d;
                 border-radius: 9px;
-                background-color: #0f172a;
+                background-color: #1e1e1e;
             }
             QRadioButton::indicator:hover {
-                border-color: #38bdf8;
+                border-color: #c22e45;
             }
             QRadioButton::indicator:checked {
-                background-color: #38bdf8;
-                border-color: #38bdf8;
+                background-color: #c22e45;
+                border-color: #c22e45;
             }
             QPushButton {
-                background-color: #0284c7;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #c22e45, stop:1 #9b1b30);
                 color: #ffffff;
                 border: none;
                 border-radius: 8px;
@@ -732,19 +755,19 @@ class NvidiaDriverDialog(QtWidgets.QDialog):
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #0369a1;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #9b1b30, stop:1 #7f1724);
             }
             QPushButton:pressed {
-                background-color: #075985;
+                background-color: #7f1724;
             }
         """)
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(25, 25, 25, 25)
-        layout.setSpacing(15)
+        layout.setSpacing(12)
         
         lbl_title = QLabel("Wybór wersji sterownika NVIDIA")
-        lbl_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #38bdf8;")
+        lbl_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #c22e45;")
         layout.addWidget(lbl_title)
         
         lbl_desc = QLabel(
@@ -754,24 +777,24 @@ class NvidiaDriverDialog(QtWidgets.QDialog):
         lbl_desc.setStyleSheet("color: #e2e8f0; line-height: 1.4;")
         layout.addWidget(lbl_desc)
         
-        stable_text = "Wersja stabilna (starsza)"
+        stable_text = "Wersja stabilna (z repozytoriów dystrybucji)"
         if stable_ver:
             stable_text += f" (wersja: {stable_ver})"
         self.radio_stable = QtWidgets.QRadioButton(stable_text)
         lbl_stable_desc = QLabel("Zalecana dla większości użytkowników. Zapewnia maksymalną stabilność systemu.")
-        lbl_stable_desc.setWordWrap(True)
         lbl_stable_desc.setStyleSheet("color: #94a3b8; font-size: 11px; margin-left: 26px; margin-bottom: 5px;")
+        lbl_stable_desc.setWordWrap(True)
         
         self.radio_legacy_580 = QtWidgets.QRadioButton("Dedykowana wersja 580.xx (LTS)")
-        lbl_legacy_desc = QLabel("Zalecana dla kart Pascal (seria 10xx, np. 1050/1060/1070) oraz Maxwell (750 Ti, seria 9xx). Zapewnia pełne wsparcie i stabilność bez ryzyka problemów z nowszymi gałęziami.")
+        lbl_legacy_desc = QLabel("Dedykowana dla kart Pascal (seria 10xx, np. 1050/1060/1070) oraz Maxwell (seria 9xx). UWAGA: Wymaga obejścia weryfikacji podpisów repozytorium.")
         lbl_legacy_desc.setWordWrap(True)
         lbl_legacy_desc.setStyleSheet("color: #94a3b8; font-size: 11px; margin-left: 26px; margin-bottom: 5px;")
         
-        latest_text = "Najnowsza wersja (oficjalna)"
+        latest_text = "Najnowsza wersja deweloperska (z repozytorium NVIDIA CUDA)"
         if latest_ver:
             latest_text += f" (wersja: {latest_ver})"
         self.radio_latest = QtWidgets.QRadioButton(latest_text)
-        lbl_latest_desc = QLabel("Zalecana dla nowszych kart (RTX), graczy oraz osób korzystających z AI/CUDA. Pobiera najnowsze oprogramowanie bezpośrednio z serwerów NVIDIA.")
+        lbl_latest_desc = QLabel("Zalecana dla nowszych kart (RTX), graczy oraz osób korzystających z AI/CUDA. Pobiera najnowsze oprogramowanie online.")
         lbl_latest_desc.setWordWrap(True)
         lbl_latest_desc.setStyleSheet("color: #94a3b8; font-size: 11px; margin-left: 26px;")
         
@@ -784,8 +807,9 @@ class NvidiaDriverDialog(QtWidgets.QDialog):
         
         if is_legacy:
             self.radio_legacy_580.setChecked(True)
-            self.radio_legacy_580.setStyleSheet("color: #38bdf8; font-size: 13px; font-weight: bold; spacing: 8px;")
-            lbl_legacy_desc.setStyleSheet("color: #38bdf8; font-size: 11px; margin-left: 26px; margin-bottom: 5px; font-weight: bold;")
+            self.radio_legacy_580.setStyleSheet("color: #c22e45; font-size: 13px; font-weight: bold; spacing: 8px;")
+            lbl_legacy_desc.setStyleSheet("color: #c22e45; font-size: 11px; margin-left: 26px; margin-bottom: 5px; font-weight: bold;")
+            lbl_legacy_desc.setText("ZALECANA DLA TWOJEJ KARTY. Zapewnia pełne wsparcie dla architektury Pascal/Maxwell. Opcja ta wymaga włączenia ignorowania podpisów SHA-1 dla repozytorium Debian 12.")
         else:
             self.radio_stable.setChecked(True)
             
@@ -800,6 +824,49 @@ class NvidiaDriverDialog(QtWidgets.QDialog):
         
         layout.addLayout(btn_layout)
         
+    def accept(self):
+        if self.radio_legacy_580.isChecked():
+            msg = QtWidgets.QMessageBox(self)
+            msg.setIcon(QtWidgets.QMessageBox.Icon.Warning)
+            msg.setWindowTitle("Ostrzeżenie o bezpieczeństwie i stabilności")
+            msg.setText("Wybrano instalację sterowników z repozytorium Debian 12 (seria 580) na systemie Debian 13.")
+            msg.setInformativeText(
+                "Ta operacja wymaga wyłączenia pełnej weryfikacji podpisów (SHA-1) dla tego repozytorium "
+                "oraz wymuszenia starszego mechanizmu weryfikacji w konfiguracji APT. Może to obniżyć poziom "
+                "bezpieczeństwa systemu i prowadzić do niestabilności jądra.\n\n"
+                "Czy na pewno chcesz kontynuować?"
+            )
+            msg.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No)
+            msg.setDefaultButton(QtWidgets.QMessageBox.StandardButton.No)
+            
+            # Tłumaczenie przycisków
+            msg.button(QtWidgets.QMessageBox.StandardButton.Yes).setText("Tak, kontynuuj")
+            msg.button(QtWidgets.QMessageBox.StandardButton.No).setText("Nie, rezygnuję")
+            
+            msg.setStyleSheet("""
+                QMessageBox {
+                    background-color: #161616;
+                }
+                QLabel {
+                    color: #f4f4f5;
+                }
+                QPushButton {
+                    background-color: #c22e45;
+                    color: white;
+                    border-radius: 6px;
+                    padding: 6px 12px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #9b1b30;
+                }
+            """)
+            
+            ret = msg.exec()
+            if ret == QtWidgets.QMessageBox.StandardButton.No:
+                return
+        super().accept()
+
     def get_choice(self):
         if self.radio_latest.isChecked():
             return "latest"
@@ -839,7 +906,6 @@ class MainWindow(QMainWindow):
         
         # Build UI
         self.init_ui()
-        
         # Ensure autostart file is created if autostart is enabled (first run or user enabled)
         if is_autostart_enabled():
             set_autostart_enabled(True)
@@ -848,16 +914,16 @@ class MainWindow(QMainWindow):
         """Sets the application stylesheet (Premium Dark/Navy customized)."""
         qss = """
         QMainWindow {
-            background-color: #0b0f17;
-            color: #f8fafc;
+            background-color: #161616;
+            color: #f4f4f5;
         }
         
         QWidget#content_pane {
-            background-color: #0b0f17;
+            background-color: #161616;
         }
         
         QLabel#tab_header {
-            color: #f8fafc;
+            color: #f4f4f5;
             font-size: 22px;
             font-weight: bold;
         }
@@ -881,25 +947,25 @@ class MainWindow(QMainWindow):
         
         QPushButton#nav_button:hover {
             background-color: rgba(255, 255, 255, 0.05);
-            color: #f8fafc;
+            color: #f4f4f5;
         }
         
         QPushButton#nav_button:checked {
-            background-color: rgba(56, 189, 248, 0.12);
-            color: #38bdf8;
-            border-left: 4px solid #38bdf8;
+            background-color: rgba(194, 46, 69, 0.12);
+            color: #c22e45;
+            border-left: 4px solid #c22e45;
             font-weight: bold;
         }
         
         /* Card Containers */
         QFrame#card {
-            background-color: #131b2e;
-            border: 1px solid #1e293b;
+            background-color: #242424;
+            border: 1px solid #2d2d2d;
             border-radius: 8px;
         }
         
         QLabel#card_title {
-            color: #38bdf8;
+            color: #c22e45;
             font-size: 15px;
             font-weight: bold;
         }
@@ -910,14 +976,14 @@ class MainWindow(QMainWindow):
         }
         
         QLabel#card_info_value {
-            color: #f8fafc;
+            color: #f4f4f5;
             font-size: 13px;
             font-weight: bold;
         }
         
         /* Buttons */
         QPushButton#primary_button {
-            background-color: #0284c7;
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #c22e45, stop:1 #9b1b30);
             color: #ffffff;
             border: none;
             border-radius: 8px;
@@ -927,51 +993,51 @@ class MainWindow(QMainWindow):
         }
         
         QPushButton#primary_button:hover {
-            background-color: #0369a1;
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #9b1b30, stop:1 #7f1724);
         }
         
         QPushButton#primary_button:pressed {
-            background-color: #075985;
+            background-color: #7f1724;
         }
         
         QPushButton#primary_button:disabled {
-            background-color: #1e293b;
-            color: #64748b;
+            background-color: #1e1e1e;
+            color: #5e646d;
         }
         
         QPushButton#secondary_button {
-            background-color: #1e293b;
-            color: #f8fafc;
-            border: 1px solid #334155;
+            background-color: #242424;
+            color: #f4f4f5;
+            border: 1px solid #2d2d2d;
             border-radius: 8px;
             padding: 10px 18px;
             font-size: 13px;
         }
         
         QPushButton#secondary_button:hover {
-            background-color: #334155;
-            border-color: #38bdf8;
+            background-color: #2d2d2d;
+            border-color: #9b1b30;
         }
         
         QPushButton#secondary_button:pressed {
-            background-color: #0f172a;
+            background-color: #1e1e1e;
         }
         
         /* Software Row frame */
         QFrame#app_row {
-            background-color: #131b2e;
-            border: 1px solid #1e293b;
+            background-color: #242424;
+            border: 1px solid #2d2d2d;
             border-radius: 8px;
         }
         
         QFrame#app_row:hover {
-            border-color: #334155;
-            background-color: #1e293b;
+            border-color: #2d2d2d;
+            background-color: #2d2d2d;
         }
         
         /* Checkboxes */
         QCheckBox {
-            color: #f8fafc;
+            color: #f4f4f5;
             font-size: 13px;
             spacing: 8px;
         }
@@ -979,28 +1045,28 @@ class MainWindow(QMainWindow):
         QCheckBox::indicator {
             width: 18px;
             height: 18px;
-            border: 1px solid #475569;
+            border: 1.5px solid #2d2d2d;
             border-radius: 4px;
-            background-color: #0f172a;
+            background-color: #1e1e1e;
         }
         
         QCheckBox::indicator:hover {
-            border-color: #38bdf8;
+            border-color: #c22e45;
         }
         
         QCheckBox::indicator:checked {
-            background-color: #38bdf8;
-            border-color: #38bdf8;
+            background-color: #c22e45;
+            border-color: #c22e45;
             image: url(CHECK_ICON_PATH);
         }
         
         /* Text Editor console */
         QPlainTextEdit#console_log {
-            background-color: #0f172a;
+            background-color: #121215;
             color: #34d399;
             font-family: 'Hack', 'Noto Mono', 'Courier New', monospace;
             font-size: 12px;
-            border: 1px solid #1e293b;
+            border: 1px solid #2d2d2d;
             border-radius: 6px;
             padding: 8px;
         }
@@ -1013,23 +1079,23 @@ class MainWindow(QMainWindow):
         
         /* Separators */
         QFrame#separator {
-            background-color: #1e293b;
+            background-color: #2d2d2d;
         }
         
         /* Scrollbars */
         QScrollBar:vertical {
             border: none;
-            background: #0f172a;
+            background: #121215;
             width: 10px;
             margin: 0px 0 0px 0;
         }
         QScrollBar::handle:vertical {
-            background: #334155;
+            background: #2d2d2d;
             min-height: 20px;
             border-radius: 5px;
         }
         QScrollBar::handle:vertical:hover {
-            background: #38bdf8;
+            background: #9b1b30;
         }
         QScrollBar::add-line:vertical {
             border: none;
@@ -1044,20 +1110,20 @@ class MainWindow(QMainWindow):
         QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
             background: none;
         }
-
+ 
         QScrollBar:horizontal {
             border: none;
-            background: #0f172a;
+            background: #121215;
             height: 10px;
             margin: 0px 0 0px 0;
         }
         QScrollBar::handle:horizontal {
-            background: #334155;
+            background: #2d2d2d;
             min-width: 20px;
             border-radius: 5px;
         }
         QScrollBar::handle:horizontal:hover {
-            background: #38bdf8;
+            background: #9b1b30;
         }
         QScrollBar::add-line:horizontal {
             border: none;
@@ -1075,35 +1141,34 @@ class MainWindow(QMainWindow):
         
         /* Dialogs and Message Boxes */
         QDialog {
-            background-color: #0b0f17;
+            background-color: #161616;
         }
         QMessageBox {
-            background-color: #0b0f17;
+            background-color: #161616;
         }
         QMessageBox QLabel {
-            color: #f8fafc;
+            color: #f4f4f5;
         }
         QMessageBox QPushButton {
-            background-color: #1e293b;
-            color: #f8fafc;
-            border: 1px solid #334155;
+            background-color: #242424;
+            color: #f4f4f5;
+            border: 1px solid #2d2d2d;
             border-radius: 6px;
             padding: 5px 15px;
         }
         QMessageBox QPushButton:hover {
-            background-color: #334155;
-            border-color: #38bdf8;
+            background-color: #2d2d2d;
+            border-color: #c22e45;
         }
         
         /* Tooltips */
         QToolTip {
-            background-color: #1e293b;
-            color: #f8fafc;
-            border: 1px solid #334155;
+            background-color: #1e1e1e;
+            color: #f4f4f5;
+            border: 1px solid #2d2d2d;
             border-radius: 4px;
             padding: 4px;
         }
-
         /* Scroll Area Content styling */
         QWidget#scroll_content {
             background-color: transparent;
@@ -1143,7 +1208,7 @@ class MainWindow(QMainWindow):
         sub_label = QLabel("WITAJ W SYSTEMIE")
         sub_label.setObjectName("sidebar_subtitle")
         sub_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        sub_label.setStyleSheet("font-size: 10px; font-weight: bold; color: #38bdf8; letter-spacing: 1.5px;")
+        sub_label.setStyleSheet("font-size: 10px; font-weight: bold; color: #c22e45; letter-spacing: 1.5px;")
         sidebar_layout.addWidget(sub_label)
         
         # Navigation spacer
@@ -1216,7 +1281,7 @@ class MainWindow(QMainWindow):
         footer_layout.addStretch()
         
         # Add a small system version label in footer
-        lbl_version = QLabel("PolonOS v1.0 LTS")
+        lbl_version = QLabel("PolonOS v1.2 LTS")
         lbl_version.setStyleSheet("color: #7f8c8d; font-size: 11px;")
         footer_layout.addWidget(lbl_version)
         
@@ -1239,11 +1304,56 @@ class MainWindow(QMainWindow):
         return QIcon()
 
     def get_app_icon(self, names, app_name):
-        """Próbuje pobrać ikonę aplikacji z motywu, a w razie braku tworzy ładny awatar tekstowy."""
+        """Próbuje pobrać ikonę aplikacji z motywu lub lokalnych zasobów, a w razie braku tworzy ładny awatar tekstowy."""
+        # 1. Spróbuj z motywu systemowego
         for name in names:
             icon = QIcon.fromTheme(name)
             if not icon.isNull():
                 return icon
+                
+        # 2. Spróbuj z lokalnych zasobów (pixmaps systemowe oraz folder deweloperski icons/)
+        if getattr(sys, 'frozen', False):
+            real_file = sys.executable
+        else:
+            real_file = os.path.realpath(__file__)
+            
+        script_dir = os.path.dirname(real_file)
+        
+        # Wykrywanie bazy chroota w ścieżce
+        chroot_prefix = ""
+        if "custom-root" in real_file:
+            parts = real_file.split("custom-root")
+            chroot_prefix = parts[0] + "custom-root"
+            
+        # Potencjalne katalogi na pixmaps
+        pixmaps_dirs = ["/usr/share/pixmaps"]
+        if chroot_prefix:
+            pixmaps_dirs.append(os.path.join(chroot_prefix, "usr/share/pixmaps"))
+            
+        # Potencjalne katalogi na lokalne ikony deweloperskie
+        local_icons_dirs = [
+            os.path.join(script_dir, "icons"),
+            os.path.join(os.path.dirname(script_dir), "icons")
+        ]
+        if "PolonOS-Repo" in real_file:
+            repo_base = real_file.split("PolonOS-Repo")[0] + "PolonOS-Repo"
+            local_icons_dirs.append(os.path.join(repo_base, "icons"))
+            
+        for name in names:
+            # Uprość nazwę (np. com.opera.Opera -> opera)
+            base_name = name.split(".")[-1].lower()
+            for n in [name, base_name]:
+                for ext in [".svg", ".png"]:
+                    # Sprawdź w katalogach pixmaps
+                    for pix_dir in pixmaps_dirs:
+                        pix_path = os.path.join(pix_dir, n + ext)
+                        if os.path.exists(pix_path):
+                            return QIcon(pix_path)
+                    # Sprawdź w lokalnych katalogach deweloperskich
+                    for local_dir in local_icons_dirs:
+                        local_path = os.path.join(local_dir, n + ext)
+                        if os.path.exists(local_path):
+                            return QIcon(local_path)
                 
         # Fallback: Generowanie płaskiego, estetycznego awatara z pierwszą literą nazwy
         colors = [
@@ -1626,21 +1736,28 @@ if [ $? -eq 0 ]; then
     apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-kernel-dkms
 else
     echo -e "${RED}[!] Nie udało się pobrać klucza repozytorium NVIDIA. Próba instalacji sterownika stabilnego...${NC}"
+    echo -e "${YELLOW}[*] Czyszczenie ewentualnych zewnętrznych repozytoriów CUDA/NVIDIA...${NC}"
+    rm -f /etc/apt/sources.list.d/cuda*.list /etc/apt/sources.list.d/nvidia*.list
+    apt-get purge -y cuda-keyring || true
+    apt-get autoremove -y --purge
     apt-get -o DPkg::Lock::Timeout=60 update
     echo -e "${YELLOW}[*] Instalacja narzędzi budowania (build-essential) oraz nagłówków jądra...${NC}"
     apt-get install -y -o DPkg::Lock::Timeout=60 build-essential linux-headers-amd64
     apt-get install -y -o DPkg::Lock::Timeout=60 "linux-headers-$(uname -r)" || true
-    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-kernel-dkms
+    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" linux-headers-amd64 firmware-misc-nonfree nvidia-kernel-dkms nvidia-driver nvidia-smi nvidia-settings
 fi
 """
             elif getattr(self, 'nvidia_choice', 'stable') == 'legacy_580':
                 script_content += """
 echo -e "${YELLOW}[*] Wykryto GPU Nvidia (Pascal/Maxwell). Przygotowywanie instalacji dedykowanych sterowników 580.xx...${NC}"
-echo -e "${YELLOW}[*] Dodawanie oficjalnego klucza i repozytorium sieciowego NVIDIA...${NC}"
-wget -O /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/cuda-keyring_1.1-1_all.deb || curl -L -o /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/cuda-keyring_1.1-1_all.deb
+echo -e "${YELLOW}[*] Dodawanie oficjalnego klucza i repozytorium sieciowego NVIDIA (Debian 12)...${NC}"
+wget -O /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb || curl -L -o /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb
 if [ $? -eq 0 ]; then
     dpkg -i /tmp/cuda-keyring.deb
-    apt-get -o DPkg::Lock::Timeout=60 update
+    echo -e "${YELLOW}[*] Wdrażanie obejścia dla sygnatur SHA-1 (allow-insecure) i przywrócenie gpgv...${NC}"
+    sed -i 's/\\[signed-by=\\([^]]*\\)\\]/[signed-by=\\1 allow-insecure=yes]/g' /etc/apt/sources.list.d/cuda-debian12-x86_64.list
+    echo 'APT::Key::GPGVCommand "/usr/bin/gpgv";' > /etc/apt/apt.conf.d/10gpgv
+    apt-get -o DPkg::Lock::Timeout=60 update --allow-insecure-repositories
     echo -e "${YELLOW}[*] Instalacja narzędzi budowania (build-essential) oraz nagłówków jądra...${NC}"
     apt-get install -y -o DPkg::Lock::Timeout=60 build-essential linux-headers-amd64
     apt-get install -y -o DPkg::Lock::Timeout=60 "linux-headers-$(uname -r)" || true
@@ -1650,28 +1767,30 @@ if [ $? -eq 0 ]; then
     apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-kernel-dkms
 else
     echo -e "${RED}[!] Nie udało się pobrać klucza repozytorium NVIDIA. Próba instalacji sterownika stabilnego...${NC}"
+    echo -e "${YELLOW}[*] Czyszczenie ewentualnych zewnętrznych repozytoriów CUDA/NVIDIA...${NC}"
+    rm -f /etc/apt/sources.list.d/cuda*.list /etc/apt/sources.list.d/nvidia*.list
+    apt-get purge -y cuda-keyring || true
+    apt-get autoremove -y --purge
     apt-get -o DPkg::Lock::Timeout=60 update
     echo -e "${YELLOW}[*] Instalacja narzędzi budowania (build-essential) oraz nagłówków jądra...${NC}"
     apt-get install -y -o DPkg::Lock::Timeout=60 build-essential linux-headers-amd64
     apt-get install -y -o DPkg::Lock::Timeout=60 "linux-headers-$(uname -r)" || true
-    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-kernel-dkms
+    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" linux-headers-amd64 firmware-misc-nonfree nvidia-kernel-dkms nvidia-driver nvidia-smi nvidia-settings
 fi
 """
             else:
                 script_content += """
-echo -e "${YELLOW}[*] Wykryto GPU Nvidia. Instalacja stabilnych sterowników własnościowych...${NC}"
-if command -v ubuntu-drivers &> /dev/null; then
-    apt-get -o DPkg::Lock::Timeout=60 update
-    apt-get install -y -o DPkg::Lock::Timeout=60 build-essential linux-headers-amd64
-    apt-get install -y -o DPkg::Lock::Timeout=60 "linux-headers-$(uname -r)" || true
-    ubuntu-drivers install
-else
-    apt-get -o DPkg::Lock::Timeout=60 update
-    echo -e "${YELLOW}[*] Instalacja narzędzi budowania (build-essential) oraz nagłówków jądra...${NC}"
-    apt-get install -y -o DPkg::Lock::Timeout=60 build-essential linux-headers-amd64
-    apt-get install -y -o DPkg::Lock::Timeout=60 "linux-headers-$(uname -r)" || true
-    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-kernel-dkms
-fi
+echo -e "${YELLOW}[*] Wykryto GPU Nvidia. Przygotowywanie instalacji stabilnych sterowników własnościowych...${NC}"
+echo -e "${YELLOW}[*] Czyszczenie ewentualnych zewnętrznych repozytoriów CUDA/NVIDIA...${NC}"
+rm -f /etc/apt/sources.list.d/cuda*.list /etc/apt/sources.list.d/nvidia*.list
+apt-get purge -y cuda-keyring || true
+apt-get autoremove -y --purge
+apt-get -o DPkg::Lock::Timeout=60 update
+echo -e "${YELLOW}[*] Instalacja narzędzi budowania (build-essential) oraz nagłówków jądra...${NC}"
+apt-get install -y -o DPkg::Lock::Timeout=60 build-essential linux-headers-amd64
+apt-get install -y -o DPkg::Lock::Timeout=60 "linux-headers-$(uname -r)" || true
+echo -e "${YELLOW}[*] Instalacja stabilnych sterowników NVIDIA z repozytorium dystrybucji...${NC}"
+apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" linux-headers-amd64 firmware-misc-nonfree nvidia-kernel-dkms nvidia-driver nvidia-smi nvidia-settings
 """
         if "broadcom" in self.recommended_drivers:
             script_content += """
@@ -1684,6 +1803,8 @@ apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef
 echo -e "${YELLOW}[*] Instalacja dostępnych aktualizacji systemowych...${NC}"
 apt-get -o DPkg::Lock::Timeout=60 update
 apt-get upgrade -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+echo -e "${YELLOW}[*] Usuwanie niepotrzebnych pakietów (autoremove)...${NC}"
+apt-get autoremove -y -o DPkg::Lock::Timeout=60
 """
 
         script_content += """
@@ -1702,6 +1823,34 @@ echo "Zalecane jest ponowne uruchomienie komputera w celu załadowania modułów
             # Execute in graphical ProgressDialog using pkexec
             dialog = ProgressDialog("Instalacja Sterowników", "pkexec", ["bash", script_path], self)
             dialog.exec()
+            
+            if getattr(dialog, 'install_success', False):
+                msg = QtWidgets.QMessageBox(self)
+                msg.setIcon(QtWidgets.QMessageBox.Icon.Information)
+                msg.setWindowTitle("Wymagany restart")
+                msg.setText("Instalacja sterowników została zakończona.")
+                msg.setInformativeText("Aby zastosować zmiany, musisz teraz zrestartować komputer.")
+                msg.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Ok)
+                msg.button(QtWidgets.QMessageBox.StandardButton.Ok).setText("ROZUMIEM")
+                msg.setStyleSheet("""
+                    QMessageBox {
+                        background-color: #161616;
+                    }
+                    QLabel {
+                        color: #f4f4f5;
+                    }
+                    QPushButton {
+                        background-color: #c22e45;
+                        color: white;
+                        border-radius: 6px;
+                        padding: 6px 12px;
+                        font-weight: bold;
+                    }
+                    QPushButton:hover {
+                        background-color: #e13b56;
+                    }
+                """)
+                msg.exec()
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Błąd instalacji", f"Nie można wywołać instalatora: {e}")
 
@@ -1770,6 +1919,13 @@ echo "Zalecane jest ponowne uruchomienie komputera w celu załadowania modułów
                     "desc": "Bezpieczna i dbająca o prywatność przeglądarka internetowa o otwartym kodzie źródłowym.",
                     "type": "flatpak",
                     "icons": ["firefox", "org.mozilla.firefox", "browser"]
+                },
+                {
+                    "id": "com.opera.Opera",
+                    "name": "Opera",
+                    "desc": "Szybka i bezpieczna przeglądarka internetowa z wbudowaną darmową usługą VPN oraz blokadą reklam.",
+                    "type": "flatpak",
+                    "icons": ["opera", "com.opera.Opera", "browser"]
                 }
             ],
             "Multimedia & Grafika": [
@@ -1795,13 +1951,13 @@ echo "Zalecane jest ponowne uruchomienie komputera w celu załadowania modułów
                     "icons": ["gimp", "org.gimp.GIMP", "applications-graphics"]
                 }
             ],
-            "Edukacja & Narzędzia": [
+            "Edukacja": [
                 {
-                    "id": "kdeedu",
-                    "name": "Pakiet Edukacyjny PolonOS (KDE Edu)",
-                    "desc": "Zestaw programów dydaktycznych, gier edukacyjnych oraz narzędzi wspomagających naukę najmłodszych.",
-                    "type": "apt",
-                    "icons": ["applications-education", "system-run", "education-science"]
+                    "id": "sagemath",
+                    "name": "SageMath",
+                    "desc": "Zaawansowane oprogramowanie matematyczne i algebraiczne (instalowane w izolowanym środowisku Conda).",
+                    "type": "conda",
+                    "icons": ["sagemath", "education-science", "applications-science"]
                 },
                 {
                     "id": "org.kde.kate",
@@ -1809,6 +1965,29 @@ echo "Zalecane jest ponowne uruchomienie komputera w celu załadowania modułów
                     "desc": "Potężny, zaawansowany i rozszerzalny edytor tekstu i kodu z podświetlaniem składni od KDE.",
                     "type": "flatpak",
                     "icons": ["kate", "org.kde.kate", "accessories-text-editor"]
+                },
+                {
+                    "id": "kdeedu",
+                    "name": "Pakiet Edukacyjny PolonOS (KDE Edu)",
+                    "desc": "Zestaw programów dydaktycznych, gier edukacyjnych oraz narzędzi wspomagających naukę najmłodszych.",
+                    "type": "apt",
+                    "icons": ["applications-education", "system-run", "education-science"]
+                }
+            ],
+            "Narzędzia": [
+                {
+                    "id": "nvidia-cuda-toolkit",
+                    "name": "NVIDIA CUDA Toolkit",
+                    "desc": "Biblioteki CUDA dla kart NVIDIA (akceleracja w OBS NVENC, Blenderze, Chrome itp. — ok. 7 GB).",
+                    "type": "apt",
+                    "icons": ["nvidia", "applications-science", "system-run"]
+                },
+                {
+                    "id": "wine",
+                    "name": "Wine Compatibility Layer",
+                    "desc": "Warstwa zgodności pozwalająca na uruchamianie aplikacji i gier z systemu Windows.",
+                    "type": "apt",
+                    "icons": ["wine", "wine-glass", "system-run-symbolic"]
                 }
             ],
             "Rozrywka": [
@@ -1824,14 +2003,7 @@ echo "Zalecane jest ponowne uruchomienie komputera w celu załadowania modułów
                     "name": "Heroic Games Launcher",
                     "desc": "Alternatywny program startowy dla gier z Epic Games Store, GOG i Prime Gaming.",
                     "type": "flatpak",
-                    "icons": ["com.heroicgameslauncher.hgl", "applications-games"]
-                },
-                {
-                    "id": "winehq-stable",
-                    "name": "Wine Compatibility Layer",
-                    "desc": "Warstwa zgodności pozwalająca na uruchamianie aplikacji i gier z systemu Windows.",
-                    "type": "apt",
-                    "icons": ["wine", "wine-glass", "system-run-symbolic"]
+                    "icons": ["heroic", "com.heroicgameslauncher.hgl", "applications-games"]
                 },
                 {
                     "id": "kdegames",
@@ -1854,7 +2026,7 @@ echo "Zalecane jest ponowne uruchomienie komputera w celu załadowania modułów
             
             # Category title
             lbl_cat_title = QLabel(category)
-            lbl_cat_title.setStyleSheet("font-size: 15px; color: #38bdf8; margin-top: 10px;")
+            lbl_cat_title.setStyleSheet("font-size: 15px; color: #c22e45; margin-top: 10px;")
             category_layout.addWidget(lbl_cat_title)
             
             # Category Apps List
@@ -1893,9 +2065,9 @@ echo "Zalecane jest ponowne uruchomienie komputera w celu załadowania modułów
                 
                 app_row_layout.addLayout(text_layout, 1)
                 
-                # Badge representing package source (SYSTEM or FLATPAK)
-                lbl_badge = QLabel("SYSTEM" if app["type"] == "apt" else "FLATPAK")
+                # Badge representing package source (SYSTEM / FLATPAK / AI / CONDA)
                 if app["type"] == "apt":
+                    lbl_badge = QLabel("SYSTEM")
                     lbl_badge.setStyleSheet(
                         "background-color: rgba(46, 204, 113, 0.2); "
                         "color: #2ecc71; "
@@ -1904,11 +2076,23 @@ echo "Zalecane jest ponowne uruchomienie komputera w celu załadowania modułów
                         "padding: 3px 8px; "
                         "font-size: 9px;"
                     )
-                else:
+
+                elif app["type"] == "sagemath":
+                    lbl_badge = QLabel("CONDA")
                     lbl_badge.setStyleSheet(
-                        "background-color: rgba(56, 189, 248, 0.2); "
-                        "color: #38bdf8; "
-                        "border: 1px solid #38bdf8; "
+                        "background-color: rgba(168, 85, 247, 0.2); "
+                        "color: #a855f7; "
+                        "border: 1px solid #a855f7; "
+                        "border-radius: 4px; "
+                        "padding: 3px 8px; "
+                        "font-size: 9px;"
+                    )
+                else:
+                    lbl_badge = QLabel("FLATPAK")
+                    lbl_badge.setStyleSheet(
+                        "background-color: rgba(194, 46, 69, 0.2); "
+                        "color: #c22e45; "
+                        "border: 1px solid #c22e45; "
                         "border-radius: 4px; "
                         "padding: 3px 8px; "
                         "font-size: 9px;"
@@ -1965,12 +2149,22 @@ echo "Zalecane jest ponowne uruchomienie komputera w celu załadowania modułów
                             "padding: 3px 8px; "
                             "font-size: 9px;"
                         )
+                    elif app.get("type") == "conda":
+                        badge.setText("CONDA")
+                        badge.setStyleSheet(
+                            "background-color: rgba(52, 152, 219, 0.2); "
+                            "color: #3498db; "
+                            "border: 1px solid #3498db; "
+                            "border-radius: 4px; "
+                            "padding: 3px 8px; "
+                            "font-size: 9px;"
+                        )
                     else:
                         badge.setText("FLATPAK")
                         badge.setStyleSheet(
-                            "background-color: rgba(56, 189, 248, 0.2); "
-                            "color: #38bdf8; "
-                            "border: 1px solid #38bdf8; "
+                            "background-color: rgba(194, 46, 69, 0.2); "
+                            "color: #c22e45; "
+                            "border: 1px solid #c22e45; "
                             "border-radius: 4px; "
                             "padding: 3px 8px; "
                             "font-size: 9px;"
@@ -1980,17 +2174,36 @@ echo "Zalecane jest ponowne uruchomienie komputera w celu załadowania modułów
         """Collects IDs and spawns ProgressDialog to run the install script graphically."""
         selected_apt = []
         selected_flatpak = []
+        install_sagemath = False
         
         for app_id, (chk, app) in self.app_checkboxes.items():
             if chk.isChecked():
-                if app.get("type") == "apt":
+                if app_id == "sagemath":
+                    install_sagemath = True
+                elif app.get("type") == "apt":
                     selected_apt.append(app_id)
                 elif app.get("type") == "flatpak":
                     selected_flatpak.append(app_id)
                      
-        if not selected_apt and not selected_flatpak:
+        if not selected_apt and not selected_flatpak and not install_sagemath:
             QtWidgets.QMessageBox.warning(self, "Brak zaznaczenia", "Proszę zaznaczyć przynajmniej jeden program do instalacji.")
             return
+            
+        import getpass
+        user_name = os.environ.get("USER") or getpass.getuser() or "user"
+        if user_name == "root":
+            sudo_user = os.environ.get("SUDO_USER")
+            if sudo_user:
+                user_name = sudo_user
+            else:
+                pkexec_uid = os.environ.get("PKEXEC_UID")
+                if pkexec_uid:
+                    import pwd
+                    try:
+                        user_name = pwd.getpwuid(int(pkexec_uid)).pw_name
+                    except Exception:
+                        pass
+        user_home = os.path.expanduser(f"~{user_name}") if user_name != "root" else "/home/user"
             
         cache_dir = os.path.expanduser("~/.cache/polonos-welcome")
         os.makedirs(cache_dir, exist_ok=True)
@@ -2004,6 +2217,10 @@ echo "Zalecane jest ponowne uruchomienie komputera w celu załadowania modułów
 # PolonOS Software Installer Script
 
 export DEBIAN_FRONTEND=noninteractive
+
+INSTALL_SAGEMATH="{str(install_sagemath).lower()}"
+REAL_USER="{user_name}"
+REAL_HOME="{user_home}"
 
 RED='\\033[0;31m'
 GREEN='\\033[0;32m'
@@ -2022,7 +2239,7 @@ FLATPAK_PACKAGES=({flatpak_array})
 # 1. Instalacja pakietów APT
 if [ ${{#APT_PACKAGES[@]}} -gt 0 ]; then
     # Jesli instalujemy wine, wlaczenie architektury i386
-    if [[ " ${{APT_PACKAGES[*]}} " =~ " winehq-stable " ]]; then
+    if [[ " ${{APT_PACKAGES[*]}} " =~ " wine " ]]; then
         if ! dpkg --print-foreign-architectures | grep -q "i386"; then
             echo -e "${{YELLOW}}[*] Włączanie architektury 32-bit (i386) dla Wine...${{NC}}"
             dpkg --add-architecture i386
@@ -2048,7 +2265,13 @@ if [ ${{#APT_PACKAGES[@]}} -gt 0 ]; then
         FAILED_APT=()
         for pkg in "${{APT_PACKAGES[@]}}"; do
             echo -e "${{YELLOW}}[*] Instalowanie pakietu: $pkg...${{NC}}"
-            apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" "$pkg"
+            if [ "$pkg" = "wine" ] || [ "$pkg" = "winehq-staging" ]; then
+                apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" winehq-staging || \
+                apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confold" winehq-stable || \
+                apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confold" wine
+            else
+                apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" "$pkg"
+            fi
             if [ $? -eq 0 ]; then
                 echo -e "${{GREEN}}[+] Pakiet $pkg zainstalowany pomyślnie.${{NC}}"
             else
@@ -2093,6 +2316,97 @@ if [ ${{#FLATPAK_PACKAGES[@]}} -gt 0 ]; then
         fi
     done
 fi
+
+# 3. Instalacja SageMath przez Condę
+if [ "$INSTALL_SAGEMATH" = "true" ]; then
+    echo ""
+    echo -e "${{BLUE}}==================================================${{NC}}"
+    echo -e "${{BLUE}}        Instalacja SageMath (przez Conda)          ${{NC}}"
+    echo -e "${{BLUE}}==================================================${{NC}}"
+    echo ""
+    
+    echo -e "${{YELLOW}}[*] Uruchamianie instalacji w katalogu domowym użytkownika $REAL_USER...${{NC}}"
+    
+    # 1. Pobranie i instalacja Minicondy
+    if [ ! -d "$REAL_HOME/.miniconda3" ]; then
+        echo -e "${{YELLOW}}[*] Pobieranie instalatora środowiska Miniconda...${{NC}}"
+        MINICONDA_SH="/tmp/Miniconda3-latest-Linux-x86_64.sh"
+        wget -q -O "$MINICONDA_SH" https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+        
+        if [ -f "$MINICONDA_SH" ]; then
+            echo -e "${{YELLOW}}[*] Instalowanie środowiska Miniconda w $REAL_HOME/.miniconda3...${{NC}}"
+            su - "$REAL_USER" -c "bash $MINICONDA_SH -b -p $REAL_HOME/.miniconda3"
+            rm -f "$MINICONDA_SH"
+            su - "$REAL_USER" -c "$REAL_HOME/.miniconda3/bin/conda init bash"
+        else
+            echo -e "${{RED}}[!] Błąd: Nie udało się pobrać instalatora Miniconda.${{NC}}"
+        fi
+    else
+        echo -e "${{GREEN}}[+] Miniconda jest już zainstalowana w systemie.${{NC}}"
+    fi
+    
+    # 2. Tworzenie środowiska i instalacja sagemath oraz jupyter
+    if [ -d "$REAL_HOME/.miniconda3" ]; then
+        if [ ! -d "$REAL_HOME/.miniconda3/envs/sage" ]; then
+            echo -e "${{YELLOW}}[*] Tworzenie środowiska Conda 'sage' i instalowanie SageMath z Jupyter Notebook...${{NC}}"
+            echo -e "${{YELLOW}}[*] To zadanie pobiera i instaluje ok. 1.5 GB danych i może zająć kilka minut...${{NC}}"
+            su - "$REAL_USER" -c "$REAL_HOME/.miniconda3/bin/conda create -n sage -c conda-forge --override-channels sage jupyter notebook -y"
+        else
+            echo -e "${{GREEN}}[+] Środowisko Conda 'sage' jest już utworzone.${{NC}}"
+        fi
+        
+        # 3. Tworzenie skrótów na pulpicie i w menu aplikacji
+        if [ -d "$REAL_HOME/.miniconda3/envs/sage" ]; then
+            echo -e "${{YELLOW}}[*] Tworzenie skrótów na pulpicie i w menu aplikacji...${{NC}}"
+            
+            su - "$REAL_USER" -c "mkdir -p $REAL_HOME/.local/share/applications"
+            
+            # Skrót do Jupyter Notebook z SageMath
+            LAUNCHER_PATH="$REAL_HOME/.local/share/applications/sagemath.desktop"
+            cat <<EOF > "$LAUNCHER_PATH"
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=SageMath (Jupyter)
+Comment=Zaawansowane oprogramowanie matematyczne (notatnik Jupyter)
+Exec=$REAL_HOME/.miniconda3/envs/sage/bin/jupyter notebook --notebook-dir=$REAL_HOME
+Icon=education-science
+Terminal=false
+Categories=Education;Science;Math;
+EOF
+            chmod 644 "$LAUNCHER_PATH"
+            chown "$REAL_USER":"$REAL_USER" "$LAUNCHER_PATH"
+            
+            # Skrót do konsoli interaktywnej SageMath
+            CONSOLE_LAUNCHER="$REAL_HOME/.local/share/applications/sagemath-console.desktop"
+            cat <<EOF > "$CONSOLE_LAUNCHER"
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=SageMath (Konsola)
+Comment=Interaktywna konsola SageMath w terminalu
+Exec=bash -c "source $REAL_HOME/.miniconda3/bin/activate sage && sage"
+Icon=education-science
+Terminal=true
+Categories=Education;Science;Math;
+EOF
+            chmod 644 "$CONSOLE_LAUNCHER"
+            chown "$REAL_USER":"$REAL_USER" "$CONSOLE_LAUNCHER"
+            
+            # Rejestracja w pliku markerów polonos-welcome
+            echo "sagemath" >> "$REAL_HOME/.config/polonos-welcome-installed-apps"
+            chown "$REAL_USER":"$REAL_USER" "$REAL_HOME/.config/polonos-welcome-installed-apps"
+            
+            echo -e "${{GREEN}}[+] SageMath został pomyślnie zainstalowany! Skróty (notatnik i konsola) znajdziesz w menu systemowym w sekcji Edukacja.${{NC}}"
+        else
+            echo -e "${{RED}}[!] Błąd: Tworzenie środowiska 'sage' nie powiodło się.${{NC}}"
+        fi
+    else
+        echo -e "${{RED}}[!] Błąd: Instalacja Miniconda nie powiodła się. Nie można kontynuować instalacji SageMath.${{NC}}"
+    fi
+fi
+
+
 
 echo ""
 echo -e "${{GREEN}}==================================================${{NC}}"
@@ -2139,13 +2453,13 @@ def main():
     # Setup custom dark palette matching the premium deep space navy style
     # to make the app's colors completely independent of the system theme settings
     palette = QtGui.QPalette()
-    bg_color = QColor(11, 15, 23)       # #0b0f17
-    card_color = QColor(19, 27, 46)     # #131b2e
-    text_color = QColor(248, 250, 252)   # #f8fafc
-    base_color = QColor(15, 23, 42)     # #0f172a
-    highlight_color = QColor(56, 189, 248) # #38bdf8
-    disabled_bg = QColor(11, 15, 23)
-    disabled_text = QColor(100, 116, 139) # #64748b
+    bg_color = QColor(22, 22, 22)       # #161616
+    card_color = QColor(36, 36, 36)     # #242424
+    text_color = QColor(244, 244, 245)   # #f4f4f5
+    base_color = QColor(30, 30, 30)     # #1e1e1e
+    highlight_color = QColor(194, 46, 69) # #c22e45
+    disabled_bg = QColor(22, 22, 22)
+    disabled_text = QColor(94, 100, 109) # #5e646d
     
     # Active state
     palette.setColor(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Window, bg_color)

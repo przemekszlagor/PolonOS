@@ -90,14 +90,14 @@ PL_MONTHS_GEN = ["stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "
 
 def get_logo_path():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    logo_path = os.path.join(base_dir, "polonos-calendar-logo.png")
+    logo_path = os.path.join(base_dir, "polonos-kalendarz-logo.png")
     if os.path.exists(logo_path):
         return logo_path
     
     # System fallbacks
     fallbacks = [
-        "/opt/polonos-calendar/src/ui/polonos-calendar-logo.png",
-        "/usr/share/pixmaps/polonos-calendar.png"
+        "/opt/polonos-kalendarz/src/ui/polonos-kalendarz-logo.png",
+        "/usr/share/pixmaps/polonos-kalendarz.png"
     ]
     for p in fallbacks:
         if os.path.exists(p):
@@ -397,7 +397,7 @@ class MainWindow(QMainWindow):
         self.current_view_index = 1 # Default to Week View (0 = Day, 1 = Week, 2 = Month)
         self.sync_workers = {}
         
-        self.setWindowTitle("PolonOS Calendar")
+        self.setWindowTitle("PolonOS Kalendarz")
         self.resize(1100, 750)
         self.setMinimumSize(900, 600)
         
@@ -446,7 +446,7 @@ class MainWindow(QMainWindow):
         top_layout.setContentsMargins(20, 5, 20, 5)
         
         # Brand label
-        logo_lbl = QLabel("PolonOS Calendar", self.top_bar)
+        logo_lbl = QLabel("PolonOS Kalendarz", self.top_bar)
         logo_lbl.setStyleSheet("font-weight: bold; font-size: 15px; letter-spacing: 0.5px;")
         top_layout.addWidget(logo_lbl)
         
@@ -625,18 +625,18 @@ class MainWindow(QMainWindow):
         import os
         import shutil
         autostart_dir = os.path.expanduser("~/.config/autostart")
-        desktop_file_path = os.path.join(autostart_dir, "polonos-calendar.desktop")
+        desktop_file_path = os.path.join(autostart_dir, "polonos-kalendarz.desktop")
         
         if enabled:
             try:
                 os.makedirs(autostart_dir, exist_ok=True)
-                system_desktop = "/usr/share/applications/polonos-calendar.desktop"
+                system_desktop = "/usr/share/applications/polonos-kalendarz.desktop"
                 if os.path.exists(system_desktop):
                     shutil.copy(system_desktop, desktop_file_path)
                 else:
                     # Fallback write custom desktop entry if system one is missing during testing
                     with open(desktop_file_path, "w") as f:
-                        f.write("[Desktop Entry]\nName=PolonOS Calendar\nComment=Menedzer Kalendarza Google (systray)\nExec=/usr/bin/polonos-calendar\nIcon=polonos-calendar\nTerminal=false\nType=Application\nCategories=Office;Calendar;Utility;\nStartupNotify=true\n")
+                        f.write("[Desktop Entry]\nName=PolonOS Kalendarz\nComment=Menedżer Kalendarza Google (systray)\nExec=/usr/bin/polonos-kalendarz\nIcon=polonos-kalendarz\nTerminal=false\nType=Application\nCategories=Office;Calendar;Utility;\nStartupNotify=true\n")
                 self.db.set_setting("autostart", "1")
             except Exception as e:
                 print(f"Error setting autostart: {e}")
@@ -795,7 +795,7 @@ class MainWindow(QMainWindow):
         # Override close button to ask user
         if self.tray_icon.isVisible():
             msg_box = QMessageBox(self)
-            msg_box.setWindowTitle("Zamykanie PolonOS Calendar")
+            msg_box.setWindowTitle("Zamykanie PolonOS Kalendarz")
             msg_box.setText("Czy chcesz całkowicie zakończyć działanie aplikacji, czy tylko zamknąć okno (pozostawiając program w tle)?")
             
             # Custom buttons

@@ -5,7 +5,7 @@ from datetime import datetime
 class DatabaseManager:
     def __init__(self, db_path=None):
         if db_path is None:
-            config_dir = os.path.expanduser("~/.config/polonos-calendar")
+            config_dir = os.path.expanduser("~/.config/polonos-kalendarz")
             os.makedirs(config_dir, exist_ok=True)
             db_path = os.path.join(config_dir, "database.db")
         
