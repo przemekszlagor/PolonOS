@@ -714,7 +714,7 @@ class NvidiaDriverDialog(QtWidgets.QDialog):
     def __init__(self, stable_ver=None, latest_ver=None, is_legacy=False, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Sterownik karty graficznej NVIDIA")
-        self.setFixedSize(650, 410)
+        self.setFixedSize(740, 420)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         
         # Style matching the premium dark theme
@@ -777,27 +777,28 @@ class NvidiaDriverDialog(QtWidgets.QDialog):
         lbl_desc.setStyleSheet("color: #e2e8f0; line-height: 1.4;")
         layout.addWidget(lbl_desc)
         
-        stable_text = "Wersja stabilna (z repozytoriów dystrybucji)"
+        stable_text = "1. Sterowniki NVIDIA 550.xx (Wersja stabilna z repozytorium dystrybucji)"
         if stable_ver:
             stable_text += f" (wersja: {stable_ver})"
         self.radio_stable = QtWidgets.QRadioButton(stable_text)
-        lbl_stable_desc = QLabel("Zalecana dla większości użytkowników. Zapewnia maksymalną stabilność systemu.")
+        lbl_stable_desc = QLabel("Oficjalna wersja 550.xx z pakietem open-kernel-dkms z repozytorium dystrybucji.")
         lbl_stable_desc.setStyleSheet("color: #94a3b8; font-size: 11px; margin-left: 26px; margin-bottom: 5px;")
         lbl_stable_desc.setWordWrap(True)
         
-        self.radio_legacy_580 = QtWidgets.QRadioButton("Dedykowana wersja 580.xx (LTS)")
-        lbl_legacy_desc = QLabel("Dedykowana dla kart Pascal (seria 10xx, np. 1050/1060/1070) oraz Maxwell (seria 9xx). UWAGA: Wymaga obejścia weryfikacji podpisów repozytorium.")
+        self.radio_legacy_580 = QtWidgets.QRadioButton("2. Sterowniki NVIDIA 580.xx (Dedykowana wersja LTS)")
+        lbl_legacy_desc = QLabel("Dedykowana dla architektury Pascal (seria GTX 10xx) oraz Maxwell (seria 9xx).")
         lbl_legacy_desc.setWordWrap(True)
         lbl_legacy_desc.setStyleSheet("color: #94a3b8; font-size: 11px; margin-left: 26px; margin-bottom: 5px;")
         
-        latest_text = "Najnowsza wersja deweloperska (z repozytorium NVIDIA CUDA)"
+        latest_text = "3. Sterowniki NVIDIA 610.xx (Najnowsza wersja z repozytorium CUDA)"
         if latest_ver:
             latest_text += f" (wersja: {latest_ver})"
         self.radio_latest = QtWidgets.QRadioButton(latest_text)
-        lbl_latest_desc = QLabel("Zalecana dla nowszych kart (RTX), graczy oraz osób korzystających z AI/CUDA. Pobiera najnowsze oprogramowanie online.")
+        lbl_latest_desc = QLabel("Najnowsze wydanie z repozytorium NVIDIA CUDA.")
         lbl_latest_desc.setWordWrap(True)
         lbl_latest_desc.setStyleSheet("color: #94a3b8; font-size: 11px; margin-left: 26px;")
         
+        # Dokładna kolejność: 1. 550.xx -> 2. 580.xx -> 3. 610.xx
         layout.addWidget(self.radio_stable)
         layout.addWidget(lbl_stable_desc)
         layout.addWidget(self.radio_legacy_580)
@@ -805,11 +806,9 @@ class NvidiaDriverDialog(QtWidgets.QDialog):
         layout.addWidget(self.radio_latest)
         layout.addWidget(lbl_latest_desc)
         
+        # Zaznaczenie wybranej opcji czerwoną kropką (bez sztucznych wyróżnień i bez dopisków zalecanych):
         if is_legacy:
             self.radio_legacy_580.setChecked(True)
-            self.radio_legacy_580.setStyleSheet("color: #c22e45; font-size: 13px; font-weight: bold; spacing: 8px;")
-            lbl_legacy_desc.setStyleSheet("color: #c22e45; font-size: 11px; margin-left: 26px; margin-bottom: 5px; font-weight: bold;")
-            lbl_legacy_desc.setText("ZALECANA DLA TWOJEJ KARTY. Zapewnia pełne wsparcie dla architektury Pascal/Maxwell. Opcja ta wymaga włączenia ignorowania podpisów SHA-1 dla repozytorium Debian 12.")
         else:
             self.radio_stable.setChecked(True)
             
@@ -1732,8 +1731,19 @@ if [ $? -eq 0 ]; then
     echo -e "${YELLOW}[*] Instalacja narzędzi budowania (build-essential) oraz nagłówków jądra...${NC}"
     apt-get install -y -o DPkg::Lock::Timeout=60 build-essential linux-headers-amd64
     apt-get install -y -o DPkg::Lock::Timeout=60 "linux-headers-$(uname -r)" || true
-    echo -e "${YELLOW}[*] Instalacja najnowszych sterowników NVIDIA z oficjalnego repozytorium...${NC}"
-    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-kernel-dkms
+    echo -e "${YELLOW}[*] Instalacja najnowszych sterowników NVIDIA z oficjalnego repozytorium (Open Kernel Modules z fallbackiem)...${NC}"
+    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-open-kernel-dkms || apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-kernel-dkms
+    echo -e "${YELLOW}[*] Konfigurowanie modprobe i czarnej listy dla nouveau...${NC}"
+    echo "blacklist nouveau" > /etc/modprobe.d/nouveau-blacklist.conf
+    echo "options nvidia-drm modeset=1" > /etc/modprobe.d/nvidia-drm.conf
+    rm -f /etc/X11/xorg.conf.d/10-nvidia.conf
+    echo -e "${YELLOW}[*] Aktualizowanie parametrów rozruchu GRUB (blokowanie nouveau i aktywacja nvidia-drm)...${NC}"
+    if [ -f /etc/default/grub ]; then
+        sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="quiet splash loglevel=3 modprobe.blacklist=nouveau nvidia-drm.modeset=1"/' /etc/default/grub
+        update-grub || true
+    fi
+    echo -e "${YELLOW}[*] Przebudowywanie obrazu rozruchowego initramfs...${NC}"
+    update-initramfs -u -k all || update-initramfs -u
 else
     echo -e "${RED}[!] Nie udało się pobrać klucza repozytorium NVIDIA. Próba instalacji sterownika stabilnego...${NC}"
     echo -e "${YELLOW}[*] Czyszczenie ewentualnych zewnętrznych repozytoriów CUDA/NVIDIA...${NC}"
@@ -1744,7 +1754,7 @@ else
     echo -e "${YELLOW}[*] Instalacja narzędzi budowania (build-essential) oraz nagłówków jądra...${NC}"
     apt-get install -y -o DPkg::Lock::Timeout=60 build-essential linux-headers-amd64
     apt-get install -y -o DPkg::Lock::Timeout=60 "linux-headers-$(uname -r)" || true
-    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" linux-headers-amd64 firmware-misc-nonfree nvidia-kernel-dkms nvidia-driver nvidia-smi nvidia-settings
+    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" linux-headers-amd64 firmware-misc-nonfree nvidia-open-kernel-dkms nvidia-driver nvidia-smi nvidia-settings || apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" linux-headers-amd64 firmware-misc-nonfree nvidia-kernel-dkms nvidia-driver nvidia-smi nvidia-settings
 fi
 """
             elif getattr(self, 'nvidia_choice', 'stable') == 'legacy_580':
@@ -1764,7 +1774,7 @@ if [ $? -eq 0 ]; then
     echo -e "${YELLOW}[*] Instalacja pakietu blokującego wersję (pinning) dla serii 580...${NC}"
     apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver-pinning-580
     echo -e "${YELLOW}[*] Instalacja sterowników NVIDIA 580.xx...${NC}"
-    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-kernel-dkms
+    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-open-kernel-dkms || apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nvidia-driver nvidia-settings nvidia-kernel-dkms
 else
     echo -e "${RED}[!] Nie udało się pobrać klucza repozytorium NVIDIA. Próba instalacji sterownika stabilnego...${NC}"
     echo -e "${YELLOW}[*] Czyszczenie ewentualnych zewnętrznych repozytoriów CUDA/NVIDIA...${NC}"
@@ -1775,7 +1785,7 @@ else
     echo -e "${YELLOW}[*] Instalacja narzędzi budowania (build-essential) oraz nagłówków jądra...${NC}"
     apt-get install -y -o DPkg::Lock::Timeout=60 build-essential linux-headers-amd64
     apt-get install -y -o DPkg::Lock::Timeout=60 "linux-headers-$(uname -r)" || true
-    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" linux-headers-amd64 firmware-misc-nonfree nvidia-kernel-dkms nvidia-driver nvidia-smi nvidia-settings
+    apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" linux-headers-amd64 firmware-misc-nonfree nvidia-open-kernel-dkms nvidia-driver nvidia-smi nvidia-settings || apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" linux-headers-amd64 firmware-misc-nonfree nvidia-kernel-dkms nvidia-driver nvidia-smi nvidia-settings
 fi
 """
             else:
@@ -1790,7 +1800,18 @@ echo -e "${YELLOW}[*] Instalacja narzędzi budowania (build-essential) oraz nag�
 apt-get install -y -o DPkg::Lock::Timeout=60 build-essential linux-headers-amd64
 apt-get install -y -o DPkg::Lock::Timeout=60 "linux-headers-$(uname -r)" || true
 echo -e "${YELLOW}[*] Instalacja stabilnych sterowników NVIDIA z repozytorium dystrybucji...${NC}"
-apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" linux-headers-amd64 firmware-misc-nonfree nvidia-kernel-dkms nvidia-driver nvidia-smi nvidia-settings
+apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" linux-headers-amd64 firmware-misc-nonfree nvidia-open-kernel-dkms nvidia-driver nvidia-smi nvidia-settings || apt-get install -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" linux-headers-amd64 firmware-misc-nonfree nvidia-kernel-dkms nvidia-driver nvidia-smi nvidia-settings
+echo -e "${YELLOW}[*] Konfigurowanie modprobe i czarnej listy dla nouveau...${NC}"
+echo "blacklist nouveau" > /etc/modprobe.d/nouveau-blacklist.conf
+echo "options nvidia-drm modeset=1" > /etc/modprobe.d/nvidia-drm.conf
+rm -f /etc/X11/xorg.conf.d/10-nvidia.conf
+echo -e "${YELLOW}[*] Aktualizowanie parametrów rozruchu GRUB (blokowanie nouveau i aktywacja nvidia-drm)...${NC}"
+if [ -f /etc/default/grub ]; then
+    sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="quiet splash loglevel=3 modprobe.blacklist=nouveau nvidia-drm.modeset=1"/' /etc/default/grub
+    update-grub || true
+fi
+echo -e "${YELLOW}[*] Przebudowywanie obrazu rozruchowego initramfs...${NC}"
+update-initramfs -u -k all || update-initramfs -u
 """
         if "broadcom" in self.recommended_drivers:
             script_content += """

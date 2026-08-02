@@ -3,7 +3,7 @@ Wszystkie istotne zmiany wprowadzone w dystrybucji PolonOS od wydania wersji **v
 
 ---
 
-## [Wersja v1.2] – Wydanie Stabilne (2026-07-31)
+## [Wersja v1.2] – Wydanie Stabilne (2026-08-02)
 
 ### Nowe Aplikacje
 * **PolonOS Kalendarz**
@@ -31,16 +31,15 @@ Wszystkie istotne zmiany wprowadzone w dystrybucji PolonOS od wydania wersji **v
   - W `PolonOS Net Monitor`: Zmodyfikowano zmienne w pliku `style.css` (`--bg-dark`, `--card-bg`, `--color-down`, `--border-accent`), zastępując stary motyw fioletowy schematem antracytowo-karminowym. Zaktualizowano również zasoby graficzne logo na oficjalną systemową wersję PolonOS oraz zaimplementowano wczytywanie ikony okna w kodzie aplikacji.
 
 ### Usprawnienia Asystenta Instalacji Sterowników (`polonos-welcome`)
-* **Poprawki dla architektur NVIDIA Pascal / Maxwell**
-  - **Dopasowanie do architektury**: Dodano automatyczne sugerowanie i zaznaczanie **Wersji stabilnej (550.x)** dla starszych kart graficznych NVIDIA Pascal (seria GTX 10xx, np. GTX 1050 Ti Mobile) i Maxwell (seria GTX 9xx).
-  - **Rozwiązanie problemu wymuszania wersji deweloperskiej (610.x)**: Instalator automatycznie oczyszcza system z pozostałości repozytoriów CUDA i NVIDIA (usuwa pliki `cuda*.list` oraz `nvidia*.list` z `/etc/apt/sources.list.d/` oraz odinstalowuje pakiet `cuda-keyring`) przed przystąpieniem do instalacji wersji stabilnej. Zapobiega to konfliktom i błędom komunikacji ze starszymi GPU.
-  - **Uproszczenie interfejsu wyboru**: Usunięto wadliwą i niedziałającą w practical opcję `legacy_580`. Zamiast tego zaoferowano dwie czytelne opcje:
-    1. *Wersja stabilna (z repozytoriów dystrybucji, 550.x)* – zalecana dla starszych kart oraz dla maksymalnej stabilności.
-    2. *Najnowsza wersja deweloperska (z repozytorium NVIDIA CUDA, obecnie 610.x)* – zalecana dla nowoczesnych kart RTX i obliczeń AI.
-  - **Kompletny zestaw sterowników**: Skrypt instalatora został rozbudowany o jawną instalację brakujących pakietów, w tym nagłówków jądra (`linux-headers-amd64`), oprogramowania firmware (`firmware-misc-nonfree`), jądra dkms (`nvidia-kernel-dkms`) oraz narzędzi `nvidia-smi` i `nvidia-settings`.
-  - **Poprawa rozmiaru okna**: Zwiększono szerokość okna dialogowego wyboru sterownika (`NvidiaDriverDialog`) z 500 do 650 pikseli, aby zapobiec ucinaniu długich nazw wersji sterowników (np. przy pobieraniu wersji z repozytorium CUDA online).
-  - **Monit o restarcie komputera**: Po pomyślnej instalacji zalecanych sterowników asystent wyświetla dedykowane okno informacyjne (modalny `QMessageBox`) o potrzebie restartu z przyciskiem "ROZUMIEM", po czym sterowanie powraca do użytkownika (brak automatycznego restartu).
-  - **Automatyczne czyszczenie pakietów (autoremove)**: Skrypt aktualizacji systemowych uruchamiany z poziomu asystenta powitalnego został rozbudowany o automatyczne wywoływanie `apt-get autoremove -y`. Dzięki temu po instalacji aktualizacji system samoczynnie oczyszcza się ze zbędnych, osieroconych pakietów i zależności, co eliminuje konieczność ręcznego sprzątania systemu w konsoli.
+* **Obsługa modułów jądra NVIDIA Open Kernel Modules oraz wsparcie architektury Blackwell (RTX 5060/50xx)**
+  - **Wdrożenie modułów otwartych**: Wprowadzono instalację pakietu `nvidia-open-kernel-dkms` dla nowożytnych kart graficznych NVIDIA (architektury Blackwell, Ada Lovelace, Ampere oraz Turing, w tym RTX 50xx, 40xx, 30xx i 20xx) z automatycznym wycofaniem (fallback) do `nvidia-kernel-dkms` dla generacji starszych.
+  - **Kolejność i układ opcji**: Uporządkowano chronologicznie listę dostępnych wersji sterowników NVIDIA w oknie dialogowym:
+    1. *1. Sterowniki NVIDIA 550.xx (Wersja stabilna z repozytorium dystrybucji)* – wersja domyślna, zalecana dla większości kart.
+    2. *2. Sterowniki NVIDIA 580.xx (Dedykowana wersja LTS)* – wersja przeznaczona dla kart z architektury Pascal (seria GTX 10xx) oraz Maxwell (seria 9xx).
+    3. *3. Sterowniki NVIDIA 610.xx (Najnowsza wersja z repozytorium CUDA)* – wersja pobierana online z serwerów NVIDIA.
+  - **Przejrzyste zaznaczanie bez dopisków**: Wyeliminowano zbędne tekstowe wyróżnienia i dopiski. Wybrana przez algorytm lub użytkownika opcja wskazywana jest wyłącznie standardową czerwoną kropką wyboru.
+  - **Poszerzenie okna dialogowego**: Powiększono szerokość okna `NvidiaDriverDialog` do 740 pikseli, eliminując ucinanie długich opisów i numerów podwersji online (np. `610.42`).
+  - **Automatyczne czyszczenie pakietów (autoremove)**: Skrypt aktualizacji systemowych uruchamiany z poziomu asystenta powitalnego został rozbudowany o automatyczne wywoływanie `apt-get autoremove -y`. Dzięki temu po instalacji aktualizacji system samoczynnie oczyszcza się ze zbędnych, osieroconych pakietów i zależności.
 
 ### Usprawnienia Menedżera Oprogramowania (`polonos-welcome`)
 * **Rozszerzenie oferty i poprawki zgodności**

@@ -10,21 +10,21 @@ Najnowszy obraz instalacyjny ISO systemu PolonOS możesz pobrać z różnych źr
 
 ### Szybkie pobieranie bezpośrednie (CDN)
 
-*   **[Główny Mirror (Cloudflare R2 CDN)](https://pub-fdfbdf6f7a81492aaf39366393d73ad6.r2.dev/iso/polonos-1.1-amd64.iso)** – **Zalecane**, najszybsze pobieranie z globalnej sieci dostarczania treści bez limitów prędkości.
-*   **[SourceForge](https://sourceforge.net/projects/polonos/files/latest/download)** – Tradycyjna sieć serwerów lustrzanych (pobieranie może być wolniejsze w zależności od obciążenia).
+*   **[Główny Mirror (Cloudflare R2 CDN)](https://pub-fdfbdf6f7a81492aaf39366393d73ad6.r2.dev/iso/polonos-1.2-amd64.iso)** – Zalecane, najszybsze pobieranie z globalnej sieci dostarczania treści bez limitów prędkości.
+*   **[SourceForge](https://sourceforge.net/projects/polonos/files/latest/download)** – Tradycyjna sieć serwerów lustrzanych.
 
 ### Pobieranie P2P (BitTorrent)
 
 Dla osób chcących zminimalizować zużycie łączy serwera lub pobierać w niesprzyjających warunkach sieciowych rekomendujemy protokół P2P:
 
-*   **[Plik .torrent](https://pub-fdfbdf6f7a81492aaf39366393d73ad6.r2.dev/torrents/polonos-1.1-amd64.iso.torrent)** – Oficjalny plik torrent.
-*   **[Link Magnet](magnet:?xt=urn:btih:d5eccd29118c5c495a6821f2af0f1e83e120bd854404f28c9735f9fc0e211246&dn=polonos-1.1-amd64.iso)** – Bezpośrednie otwarcie pobierania w Twoim kliencie torrent.
+*   **[Plik .torrent](https://pub-fdfbdf6f7a81492aaf39366393d73ad6.r2.dev/torrents/polonos-1.2-amd64.iso.torrent)** – Oficjalny plik torrent.
+*   **[Link Magnet](magnet:?xt=urn:btih:b158e4d3a0eb43b2315dc535b65290490ee3c44ebc196440df0a21a144f7132a&dn=polonos-1.2-amd64.iso)** – Bezpośrednie otwarcie pobierania w klincie torrent.
 
 ### Weryfikacja integralności obrazu
 
 Przed nagraniem ISO na nośnik USB (np. programem Rufus lub Ventoy), upewnij się, że plik nie uległ uszkodzeniu podczas transferu:
 
-*   **Suma kontrolna SHA256:** `d5eccd29118c5c495a6821f2af0f1e83e120bd854404f28c9735f9fc0e211246`
+*   **Suma kontrolna SHA256:** `b158e4d3a0eb43b2315dc535b65290490ee3c44ebc196440df0a21a144f7132a`
 
 ---
 
