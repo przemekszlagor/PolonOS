@@ -1970,7 +1970,7 @@ echo "Zalecane jest ponowne uruchomienie komputera w celu załadowania modułów
                 app_frame = QFrame()
                 app_frame.setObjectName("app_row")
                 app_row_layout = QHBoxLayout(app_frame)
-                app_row_layout.setContentsMargins(10, 10, 15, 10)
+                app_row_layout.setContentsMargins(12, 12, 12, 12)
                 app_row_layout.setSpacing(12)
                 
                 # Checkbox (no text label, handled manually)
