@@ -41,8 +41,8 @@ def main():
     QLocalServer.removeServer(socket_name)
     local_server.listen(socket_name)
     
-    # Modern Sans font
-    font = QFont("Inter", 10)
+    # Modern Sans font (Roboto)
+    font = QFont("Roboto", 10)
     if not font.exactMatch():
         font = QFont("DejaVu Sans", 10)
     app.setFont(font)

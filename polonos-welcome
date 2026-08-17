@@ -851,7 +851,7 @@ class MainWindow(QMainWindow):
         QMainWindow {
             background-color: #161616;
             color: #f4f4f5;
-            font-family: 'Inter', 'Segoe UI', Helvetica, Arial, sans-serif;
+            font-family: 'Roboto', 'Inter', 'Segoe UI', Helvetica, Arial, sans-serif;
         }
         
         QWidget#content_pane {
@@ -2507,6 +2507,12 @@ def main():
     
     app = QApplication(sys.argv)
     app.setDesktopFileName("polonos-welcome")
+    
+    # Set default app font to Roboto
+    roboto_font = QtGui.QFont("Roboto", 10)
+    if not roboto_font.exactMatch():
+        roboto_font = QtGui.QFont("DejaVu Sans", 10)
+    app.setFont(roboto_font)
     
     # Force Fusion style
     app.setStyle("Fusion")
