@@ -23,7 +23,8 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("PolonOS Kalendarz")
-    app.setApplicationDisplayName("PolonOS Kalendarz")
+    app.setApplicationDisplayName("PolonOS Kalendarz 1.3")
+    app.setApplicationVersion("1.3")
     app.setDesktopFileName("polonos-kalendarz")
     
     # Single Instance check using QLocalServer/QLocalSocket

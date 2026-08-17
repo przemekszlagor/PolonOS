@@ -581,3 +581,22 @@ body {
     color: var(--text-primary);
 }
 
+.brand-text h2 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+}
+
+.version-badge {
+    font-size: 11px;
+    font-weight: bold;
+    background: rgba(194, 46, 69, 0.2);
+    color: #c22e45;
+    border: 1px solid #c22e45;
+    border-radius: 4px;
+    padding: 2px 6px;
+    margin-left: 8px;
+    vertical-align: middle;
+}

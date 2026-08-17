@@ -397,7 +397,7 @@ class MainWindow(QMainWindow):
         self.current_view_index = 1 # Default to Week View (0 = Day, 1 = Week, 2 = Month)
         self.sync_workers = {}
         
-        self.setWindowTitle("PolonOS Kalendarz")
+        self.setWindowTitle("PolonOS Kalendarz 1.3")
         self.resize(1100, 750)
         self.setMinimumSize(900, 600)
         
@@ -445,10 +445,22 @@ class MainWindow(QMainWindow):
         top_layout = QHBoxLayout(self.top_bar)
         top_layout.setContentsMargins(20, 5, 20, 5)
         
-        # Brand label
+        # Brand label & Version badge
         logo_lbl = QLabel("PolonOS Kalendarz", self.top_bar)
         logo_lbl.setStyleSheet("font-weight: bold; font-size: 15px; letter-spacing: 0.5px;")
         top_layout.addWidget(logo_lbl)
+        
+        ver_lbl = QLabel("1.3", self.top_bar)
+        ver_lbl.setStyleSheet(
+            "font-size: 10px; font-weight: bold; "
+            "background-color: rgba(194, 46, 69, 0.2); "
+            "color: #c22e45; "
+            "border: 1px solid #c22e45; "
+            "border-radius: 4px; "
+            "padding: 1px 5px; "
+            "margin-left: 4px;"
+        )
+        top_layout.addWidget(ver_lbl)
         
         top_layout.addStretch()
         

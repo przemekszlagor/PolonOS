@@ -79,7 +79,7 @@ cp ui/polonos-kalendarz-logo.png "$PKG_DIR/usr/share/pixmaps/polonos-kalendarz.p
 echo "Tworzenie pliku kontrolnego..."
 cat << 'EOF' > "$PKG_DIR/DEBIAN/control"
 Package: polonos-kalendarz
-Version: 1.0.0
+Version: 1.3.0
 Section: utils
 Priority: optional
 Architecture: amd64

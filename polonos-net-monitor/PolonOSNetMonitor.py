@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# PolonOS NetMonitor v1.1 - Aplikacja do monitorowania łącz sieciowych w PolonOS
+# PolonOS NetMonitor v1.3 - Aplikacja do monitorowania łącz sieciowych w PolonOS
 import os
 import sys
 
@@ -201,7 +201,7 @@ class NetMonitor(threading.Thread):
 
 class PolonOSNetMonitorApp(Gtk.Window):
     def __init__(self):
-        super().__init__(title="PolonOS NetMonitor")
+        super().__init__(title="PolonOS NetMonitor 1.3")
         self.set_default_size(800, 560)
         self.set_position(Gtk.WindowPosition.CENTER)
         
@@ -223,8 +223,8 @@ class PolonOSNetMonitorApp(Gtk.Window):
         
         hb = Gtk.HeaderBar()
         hb.set_show_close_button(True)
-        hb.set_title("PolonOS NetMonitor")
-        hb.set_subtitle("Monitorowanie ruchu sieciowego w czasie rzeczywistym")
+        hb.set_title("PolonOS NetMonitor 1.3")
+        hb.set_subtitle("Monitorowanie ruchu sieciowego w czasie rzeczywistym (PolonOS 1.3-KDE)")
         
         context = hb.get_style_context()
         context.add_class("polonosnetmonitor-header")
