@@ -48,7 +48,11 @@ cat << 'EOF' > "$PKG_DIR/usr/bin/polonos-kalendarz"
 # Executable runner for PolonOS Kalendarz
 export QT_NO_PORTAL=1
 export QT_USE_PORTAL=0
-/opt/polonos-kalendarz/.venv/bin/python3 /opt/polonos-kalendarz/src/main.py "$@"
+if [ -f /opt/polonos-kalendarz/.venv/bin/python3 ] && /opt/polonos-kalendarz/.venv/bin/python3 -c "import PySide6" 2>/dev/null; then
+    exec /opt/polonos-kalendarz/.venv/bin/python3 /opt/polonos-kalendarz/src/main.py "$@"
+else
+    exec /usr/bin/python3 /opt/polonos-kalendarz/src/main.py "$@"
+fi
 EOF
 chmod 755 "$PKG_DIR/usr/bin/polonos-kalendarz"
 
@@ -96,23 +100,23 @@ set -e
 
 echo "PolonOS Kalendarz: Konfigurowanie aplikacji..."
 
-# 1. Inicjalizacja wirtualnego środowiska w /opt
-echo "Tworzenie wirtualnego środowiska w /opt/polonos-kalendarz/.venv..."
-python3 -m venv --without-pip /opt/polonos-kalendarz/.venv
+# Wykonaj tworzenie środowiska opcjonalnie jeśli jest dostęp do sieci
+if ping -c 1 8.8.8.8 >/dev/null 2>&1; then
+    echo "Dostęp do sieci wykryty, próba konfiguracji wirtualnego środowiska..."
+    python3 -m venv --without-pip /opt/polonos-kalendarz/.venv 2>/dev/null || true
+    curl -sS https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py 2>/dev/null || true
+    if [ -f /tmp/get-pip.py ]; then
+        /opt/polonos-kalendarz/.venv/bin/python3 /tmp/get-pip.py 2>/dev/null || true
+        rm -f /tmp/get-pip.py
+        /opt/polonos-kalendarz/.venv/bin/pip install --no-cache-dir PySide6 google-api-python-client google-auth-oauthlib google-auth-httplib2 requests 2>/dev/null || true
+    fi
+else
+    echo "Instalacja offline - aplikacja użyje systemowego środowiska python3-pyside6."
+fi
 
-# 2. Pobieranie i instalowanie pip
-echo "Pobieranie instalatora pip..."
-curl -sS https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
-/opt/polonos-kalendarz/.venv/bin/python3 /tmp/get-pip.py
-rm -f /tmp/get-pip.py
-
-# 3. Instalowanie wymaganych bibliotek PySide6 i Google API
-echo "Instalowanie zależności (PySide6, google-api-python-client, etc.)..."
-/opt/polonos-kalendarz/.venv/bin/pip install --no-cache-dir PySide6 google-api-python-client google-auth-oauthlib google-auth-httplib2 requests
-
-# 4. Ustawianie uprawnień
+# Ustawianie uprawnień
 echo "Ustawianie uprawnień dla katalogu aplikacji..."
-chmod -R 755 /opt/polonos-kalendarz
+chmod -R 755 /opt/polonos-kalendarz || true
 
 echo "PolonOS Kalendarz: Konfiguracja zakończona pomyślnie!"
 exit 0
