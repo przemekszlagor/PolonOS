@@ -1,0 +1,22 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "przemyslaw.szlagor@polonos.org",
+                "Name": "Przemysław Szlagor"
+            }
+        ],
+        "Category": "Global Theme",
+        "Description": "Official PolonOS Light Global Theme",
+        "Icon": "preferences-desktop-theme",
+        "Id": "org.polonos.light",
+        "License": "GPLv3",
+        "Name": "PolonOS Light",
+        "ServiceTypes": [
+            "KPackage/Generic"
+        ],
+        "Version": "1.0.0",
+        "Website": "https://polonos.org"
+    },
+    "KPackageStructure": "Plasma/LookAndFeel"
+}

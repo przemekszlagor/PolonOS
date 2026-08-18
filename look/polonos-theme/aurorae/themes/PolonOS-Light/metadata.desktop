@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=PolonOS-Light
+Comment=PolonOS Light Window Decoration Theme (Windows 12 Style)
+Encoding=UTF-8
+Type=Service
+X-KDE-ServiceTypes=KWin/Decoration
+X-KDE-PluginInfo-Author=Przemysław Szlagor
+X-KDE-PluginInfo-Email=przemyslaw.szlagor@polonos.org
+X-KDE-PluginInfo-Name=PolonOS-Light
+X-KDE-PluginInfo-Version=1.0
+X-KDE-PluginInfo-License=GPLv3

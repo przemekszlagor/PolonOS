@@ -1,0 +1,21 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "przemyslaw.szlagor@polonos.org",
+                "Name": "Przemysław Szlagor"
+            }
+        ],
+        "Category": "Window Decoration",
+        "Description": "Official PolonOS Dark Window Decoration Theme (Windows 12 Style)",
+        "Icon": "preferences-system-windows",
+        "Id": "PolonOS-Dark",
+        "License": "GPLv3",
+        "Name": "PolonOS-Dark",
+        "ServiceTypes": [
+            "KWin/Decoration"
+        ],
+        "Version": "1.0.0",
+        "Website": "https://polonos.org"
+    }
+}

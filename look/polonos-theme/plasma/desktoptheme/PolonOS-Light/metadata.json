@@ -1,0 +1,21 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "przemyslaw.szlagor@polonos.org",
+                "Name": "Przemysław Szlagor"
+            }
+        ],
+        "Category": "Plasma Theme",
+        "Description": "Official PolonOS Light Desktop Theme for KDE Plasma Panel and Widgets",
+        "Icon": "preferences-desktop-theme",
+        "Id": "PolonOS-Light",
+        "License": "GPLv3",
+        "Name": "PolonOS-Light",
+        "ServiceTypes": [
+            "Plasma/Theme"
+        ],
+        "Version": "1.0.0",
+        "Website": "https://polonos.org"
+    }
+}

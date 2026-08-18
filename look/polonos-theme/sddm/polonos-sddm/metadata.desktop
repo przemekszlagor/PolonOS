@@ -1,0 +1,13 @@
+[SddmGreeterTheme]
+Name=PolonOS SDDM Theme
+Description=Official PolonOS Dark Qt6 Login Screen Theme
+Author=Przemysław Szlagor
+Copyright=(c) 2026, PolonOS
+License=GPLv3
+Type=sddm-theme
+Version=1.3.0
+MainScript=Main.qml
+ConfigFile=theme.conf
+Theme-Id=polonos-sddm
+Theme-API=2.0
+QtVersion=6

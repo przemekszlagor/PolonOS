@@ -1,0 +1,13 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "przemyslaw.szlagor@polonos.org",
+                "Name": "Przemysław Szlagor"
+            }
+        ],
+        "Id": "PolonOS",
+        "License": "CC-BY-SA-4.0",
+        "Name": "PolonOS Wallpaper"
+    }
+}
