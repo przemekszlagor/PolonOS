@@ -1,0 +1,9 @@
+{
+    "latest_version": "1.3",
+    "release_name": "PolonOS 1.3-KDE",
+    "release_date": "2026-10-16",
+    "min_supported_version": "1.0",
+    "package_url": "https://github.com/przemekszlagor/PolonOS/releases/download/v1.3/polonos-upgrade-1.3.tar.gz",
+    "changelog_pl": "Aktualne stabilne wydanie dystrybucji PolonOS 1.3-KDE.",
+    "warning_pl": "Przed rozpoczęciem aktualizacji zaleca się utworzenie migawki systemu w programie Timeshift."
+}

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=PolonOS Aplikacje
+Name[pl]=PolonOS Aplikacje
+Comment=Menedżer aktualizacji systemowych, oprogramowania oraz nowszych wersji PolonOS
+Exec=/usr/bin/polonos-aplikacje %f
+Icon=polonos-aplikacje
+Terminal=false
+Type=Application
+Categories=System;Settings;PackageManager;Qt;
+MimeType=application/vnd.debian.binary-package;application/x-deb;application/x-debian-package;
+StartupNotify=true
