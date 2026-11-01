@@ -10,21 +10,64 @@ class DistUpgrader:
         "https://polonos.org/repo/polonos-release.json"
     ]
 
+    POLONOS_MARKERS = (
+        "/usr/bin/polonos-welcome",
+        "/usr/lib/polonos-welcome",
+        "/usr/bin/polonos-set-start-icon",
+        "/etc/calamares/branding/polonos"
+    )
+
     def __init__(self):
-        self.os_info = self._read_os_release()
-        self.os_id = self.os_info.get("ID", "").lower()
-        self.os_name = self.os_info.get("NAME", "Linux")
-        self.pretty_name = self.os_info.get("PRETTY_NAME", self.os_name)
-        self.local_version = self.os_info.get("VERSION_ID", "")
-        self.is_polonos = self.os_id == "polonos" or self.os_name.lower().startswith("polonos")
+        self.os_info = self._read_key_value_file(("/etc/os-release", "/usr/lib/os-release"))
+        self.lsb_info = self._read_key_value_file(("/etc/lsb-release",))
+
+        os_id = self.os_info.get("ID", "").lower()
+        os_name = self.os_info.get("NAME", "Linux")
+        lsb_id = self.lsb_info.get("DISTRIB_ID", "").lower()
+        lsb_desc = self.lsb_info.get("DISTRIB_DESCRIPTION", "")
+        lsb_ver = self.lsb_info.get("DISTRIB_RELEASE", "").strip()
+
+        has_polonos_markers = any(os.path.exists(p) for p in self.POLONOS_MARKERS)
+
+        self.is_polonos = (
+            os_id == "polonos"
+            or os_name.lower().startswith("polonos")
+            or lsb_id == "polonos"
+            or "polonos" in lsb_desc.lower()
+            or has_polonos_markers
+        )
+
+        if self.is_polonos:
+            self.os_id = "polonos"
+            self.os_name = "PolonOS"
+            os_ver = self.os_info.get("VERSION_ID", "").strip()
+            if os_id == "polonos" and os_ver:
+                self.local_version = os_ver
+            elif lsb_ver:
+                self.local_version = lsb_ver
+            else:
+                self.local_version = "1.3"
+
+            os_pretty = self.os_info.get("PRETTY_NAME", "")
+            if "polonos" in os_pretty.lower():
+                self.pretty_name = os_pretty
+            elif "polonos" in lsb_desc.lower():
+                self.pretty_name = lsb_desc
+            else:
+                self.pretty_name = f"PolonOS {self.local_version}-KDE"
+        else:
+            self.os_id = os_id
+            self.os_name = os_name
+            self.pretty_name = self.os_info.get("PRETTY_NAME", self.os_name)
+            self.local_version = self.os_info.get("VERSION_ID", "")
 
     def reload_os_info(self):
         self.__init__()
 
     @staticmethod
-    def _read_os_release():
+    def _read_key_value_file(paths):
         info = {}
-        for path in ("/etc/os-release", "/usr/lib/os-release"):
+        for path in paths:
             if os.path.exists(path):
                 try:
                     with open(path, "r", encoding="utf-8") as f:
@@ -32,7 +75,7 @@ class DistUpgrader:
                             line = line.strip()
                             if "=" in line and not line.startswith("#"):
                                 k, v = line.split("=", 1)
-                                info[k] = v.strip().strip('"')
+                                info[k.strip()] = v.strip().strip('"').strip("'")
                     break
                 except Exception:
                     pass
@@ -109,10 +152,10 @@ class DistUpgrader:
             "if command -v flatpak >/dev/null 2>&1; then "
             "  flatpak update -y --noninteractive || true; "
             "fi; "
-            f"if ! grep -q 'VERSION_ID=\"{target_ver}\"' /etc/os-release 2>/dev/null; then "
-            f"  printf 'PRETTY_NAME=\"PolonOS {target_ver}-KDE\"\\nNAME=\"PolonOS\"\\nVERSION_ID=\"{target_ver}\"\\nVERSION=\"{target_ver} (Debian Trixie)\"\\nVERSION_CODENAME=trixie\\nID=polonos\\nID_LIKE=debian\\nHOME_URL=\"https://polonos.org/\"\\nSUPPORT_URL=\"https://polonos.org/\"\\nBUG_REPORT_URL=\"https://polonos.org/\"\\n' > /etc/os-release; "
-            "  cp -f /etc/os-release /usr/lib/os-release 2>/dev/null || true; "
+            f"if ! grep -q 'VERSION_ID=\"{target_ver}\"' /etc/os-release 2>/dev/null || ! grep -q 'ID=polonos' /etc/os-release 2>/dev/null; then "
             f"  printf 'DISTRIB_ID=PolonOS\\nDISTRIB_RELEASE={target_ver}\\nDISTRIB_CODENAME=trixie\\nDISTRIB_DESCRIPTION=\"PolonOS {target_ver}-KDE\"\\n' > /etc/lsb-release; "
+            f"  printf 'PRETTY_NAME=\"PolonOS {target_ver}-KDE\"\\nNAME=\"PolonOS\"\\nVERSION_ID=\"{target_ver}\"\\nVERSION=\"{target_ver} (Debian Trixie)\"\\nVERSION_CODENAME=trixie\\nID=polonos\\nID_LIKE=debian\\nHOME_URL=\"https://polonos.org/\"\\nSUPPORT_URL=\"https://polonos.org/\"\\nBUG_REPORT_URL=\"https://polonos.org/\"\\n' > /usr/lib/os-release; "
+            "  rm -f /etc/os-release && cp -f /usr/lib/os-release /etc/os-release 2>/dev/null || true; "
             f"  echo 'PolonOS {target_ver}-KDE \\n \\l' > /etc/issue; "
             "fi; "
             "rm -rf \"$TMP_DIR\"; "

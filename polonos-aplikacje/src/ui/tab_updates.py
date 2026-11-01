@@ -188,6 +188,7 @@ class TabUpdates(QWidget):
             "echo '[PolonOS] 1/2: Aktualizacja pakietów systemowych APT...'; "
             "apt-get update && apt-get dist-upgrade -y "
             "-o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'; "
+            "if [ -x /usr/sbin/polonos-restore-branding ]; then /usr/sbin/polonos-restore-branding || true; fi; "
             "if command -v flatpak >/dev/null 2>&1; then "
             "  echo '[PolonOS] 2/2: Aktualizacja aplikacji i środowisk Flatpak...'; "
             "  flatpak update -y --noninteractive || true; "

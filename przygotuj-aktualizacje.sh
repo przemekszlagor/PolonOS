@@ -69,7 +69,14 @@ fi
 
 # Krok 4: Aktualizacja plików identyfikacyjnych systemu do wersji ${NEW_VER}
 echo "[PolonOS] Krok 4/4: Aktualizacja oznaczeń wersji systemu do PolonOS ${NEW_VER}-KDE..."
-cat << 'OSRELEASE' > /etc/os-release
+cat << 'LSBRELEASE' > /etc/lsb-release
+DISTRIB_ID=PolonOS
+DISTRIB_RELEASE=${NEW_VER}
+DISTRIB_CODENAME=trixie
+DISTRIB_DESCRIPTION="PolonOS ${NEW_VER}-KDE"
+LSBRELEASE
+
+cat << 'OSRELEASE' > /usr/lib/os-release
 PRETTY_NAME="PolonOS ${NEW_VER}-KDE"
 NAME="PolonOS"
 VERSION_ID="${NEW_VER}"
@@ -82,14 +89,8 @@ SUPPORT_URL="https://polonos.org/"
 BUG_REPORT_URL="https://polonos.org/"
 OSRELEASE
 
-cp -f /etc/os-release /usr/lib/os-release 2>/dev/null || true
-
-cat << 'LSBRELEASE' > /etc/lsb-release
-DISTRIB_ID=PolonOS
-DISTRIB_RELEASE=${NEW_VER}
-DISTRIB_CODENAME=trixie
-DISTRIB_DESCRIPTION="PolonOS ${NEW_VER}-KDE"
-LSBRELEASE
+rm -f /etc/os-release
+cp -f /usr/lib/os-release /etc/os-release 2>/dev/null || ln -sf ../usr/lib/os-release /etc/os-release
 
 echo "PolonOS ${NEW_VER}-KDE \\n \\l" > /etc/issue
 

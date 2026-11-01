@@ -126,6 +126,62 @@ echo "PolonOS Aplikacje: Konfigurowanie uprawnień i skrótów..."
 chmod -R 755 /opt/polonos-aplikacje || true
 chmod 755 /usr/bin/polonos-aplikacje || true
 
+if grep -qi "PolonOS" /etc/lsb-release 2>/dev/null || grep -qi "PolonOS" /etc/os-release 2>/dev/null || [ -f /usr/bin/polonos-welcome ] || [ -d /usr/lib/polonos-welcome ] || [ -f /usr/bin/polonos-set-start-icon ]; then
+    cat << 'BRANDING_EOF' > /usr/sbin/polonos-restore-branding
+#!/bin/bash
+if ! grep -qi "PolonOS" /etc/lsb-release 2>/dev/null && [ ! -f /usr/bin/polonos-welcome ] && [ ! -d /usr/lib/polonos-welcome ] && [ ! -f /usr/bin/polonos-set-start-icon ]; then
+    exit 0
+fi
+
+POLONOS_VER=""
+if [ -f /etc/lsb-release ]; then
+    POLONOS_VER="$(grep '^DISTRIB_RELEASE=' /etc/lsb-release 2>/dev/null | cut -d= -f2 | tr -d '"' | tr -d "'")"
+fi
+if [ -z "$POLONOS_VER" ] && grep -qi '^ID=polonos' /etc/os-release 2>/dev/null; then
+    POLONOS_VER="$(grep '^VERSION_ID=' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"' | tr -d "'")"
+fi
+if [ -z "$POLONOS_VER" ]; then
+    POLONOS_VER="1.3"
+fi
+
+if ! grep -qi '^ID=polonos' /etc/os-release 2>/dev/null || ! grep -qi '^ID=polonos' /usr/lib/os-release 2>/dev/null; then
+    cat << OS_EOF > /usr/lib/os-release
+PRETTY_NAME="PolonOS ${POLONOS_VER}-KDE"
+NAME="PolonOS"
+VERSION_ID="${POLONOS_VER}"
+VERSION="${POLONOS_VER} (Debian Trixie)"
+VERSION_CODENAME=trixie
+ID=polonos
+ID_LIKE=debian
+HOME_URL="https://polonos.org/"
+SUPPORT_URL="https://polonos.org/"
+BUG_REPORT_URL="https://polonos.org/"
+OS_EOF
+    rm -f /etc/os-release
+    cp -f /usr/lib/os-release /etc/os-release 2>/dev/null || ln -sf ../usr/lib/os-release /etc/os-release
+fi
+
+if ! grep -qi "PolonOS" /etc/lsb-release 2>/dev/null; then
+    cat << LSB_EOF > /etc/lsb-release
+DISTRIB_ID=PolonOS
+DISTRIB_RELEASE=${POLONOS_VER}
+DISTRIB_CODENAME=trixie
+DISTRIB_DESCRIPTION="PolonOS ${POLONOS_VER}-KDE"
+LSB_EOF
+fi
+
+if ! grep -qi "PolonOS" /etc/issue 2>/dev/null; then
+    echo "PolonOS ${POLONOS_VER}-KDE \n \l" > /etc/issue
+fi
+BRANDING_EOF
+    chmod 755 /usr/sbin/polonos-restore-branding
+    mkdir -p /etc/apt/apt.conf.d
+    cat << 'APT_HOOK_EOF' > /etc/apt/apt.conf.d/99-polonos-branding
+DPkg::Post-Invoke { "if [ -x /usr/sbin/polonos-restore-branding ]; then /usr/sbin/polonos-restore-branding || true; fi"; };
+APT_HOOK_EOF
+    /usr/sbin/polonos-restore-branding || true
+fi
+
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database -q || true
 fi
