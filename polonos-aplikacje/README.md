@@ -36,7 +36,7 @@ Program podzielony jest na 3 czytelne zakładki:
 ## Jak zainstalować program?
 
 ### Sposób 1: Z gotowego pliku `.deb` (najprostszy)
-Pobierz plik `polonos-aplikacje.deb` (lub `polonos-aplikacje_1.4.0_amd64.deb`) i zainstaluj go poleceniem:
+Pobierz plik `polonos-aplikacje.deb` (lub `polonos-aplikacje_1.4.1_amd64.deb`) i zainstaluj go poleceniem:
 ```bash
 sudo apt install ./polonos-aplikacje.deb
 ```
@@ -47,7 +47,7 @@ W katalogu projektu uruchom skrypt:
 chmod +x build_deb.sh
 ./build_deb.sh
 ```
-Skrypt utworzy gotowy plik `polonos-aplikacje_1.4.0_amd64.deb`.
+Skrypt utworzy gotowy plik `polonos-aplikacje_1.4.1_amd64.deb`.
 
 ---
 

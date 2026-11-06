@@ -132,11 +132,16 @@ class AppInitWorker(QThread):
         self.init_finished.emit()
 
 class MainWindow(QMainWindow):
-    def __init__(self, start_in_tray=False, deb_file_path=None):
+    def __init__(self, start_in_tray=False, deb_file_path=None, ipc_server=None):
         super().__init__()
         self._start_in_tray = start_in_tray
         self._initial_deb_path = deb_file_path
+        self._ipc_server = ipc_server
+        self._active_deb_dialog = None
         self._force_quit = False
+
+        if self._ipc_server is not None:
+            self._ipc_server.newConnection.connect(self.on_ipc_new_connection)
 
         saved_state = load_update_state()
         self._last_check_ts = float(saved_state.get("last_check_timestamp", 0.0))
@@ -439,8 +444,49 @@ class MainWindow(QMainWindow):
 
     def quit_application(self):
         self._force_quit = True
+        if self._ipc_server is not None:
+            self._ipc_server.close()
         self.tray_icon.hide()
         QApplication.quit()
+
+    def on_ipc_new_connection(self):
+        if self._ipc_server is None:
+            return
+        while self._ipc_server.hasPendingConnections():
+            client = self._ipc_server.nextPendingConnection()
+            if client is None:
+                continue
+            if not client.bytesAvailable():
+                client.waitForReadyRead(300)
+            raw = bytes(client.readAll()).decode("utf-8", errors="ignore").strip()
+            client.disconnectFromServer()
+            client.deleteLater()
+            if raw:
+                for line in raw.splitlines():
+                    try:
+                        msg = json.loads(line)
+                        if isinstance(msg, dict):
+                            self.handle_ipc_message(msg)
+                    except Exception:
+                        pass
+
+    def handle_ipc_message(self, msg: dict):
+        action = msg.get("action", "")
+        if action == "activate":
+            self.restore_from_tray()
+        elif action == "open_deb":
+            deb_path = msg.get("deb_path", "")
+            if deb_path and os.path.isfile(deb_path):
+                self.handle_external_deb_request(deb_path)
+
+    def handle_external_deb_request(self, deb_path: str):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+        if self.tabs.isEnabled():
+            QTimer.singleShot(50, lambda: self.open_deb_installer(deb_path))
+        else:
+            self._initial_deb_path = deb_path
 
     def start_background_loading(self):
         self.worker = AppInitWorker(self.apt_manager)
@@ -474,8 +520,20 @@ class MainWindow(QMainWindow):
     def open_deb_installer(self, deb_path: str):
         if not deb_path or not os.path.isfile(deb_path):
             return
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+        if self._active_deb_dialog is not None and self._active_deb_dialog.isVisible():
+            if self._active_deb_dialog.process is not None:
+                self._active_deb_dialog.raise_()
+                self._active_deb_dialog.activateWindow()
+                return
+            self._active_deb_dialog.reject()
+
         dlg = DebPackageDialog(deb_path, apt_manager=self.apt_manager, parent=self)
+        self._active_deb_dialog = dlg
         dlg.exec()
+        self._active_deb_dialog = None
         self.tab_store.load_catalog()
         self.tab_updates.load_updates()
 

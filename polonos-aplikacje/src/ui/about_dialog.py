@@ -42,7 +42,7 @@ class AboutDialog(QDialog):
         lbl_name.setFont(font_title)
         lbl_name.setStyleSheet("color: #ffffff;")
 
-        lbl_ver = QLabel("Wersja 1.4.0 (KDE & Debian)")
+        lbl_ver = QLabel("Wersja 1.4.1 (KDE & Debian)")
         lbl_ver.setStyleSheet("color: #c22e45; font-weight: bold; font-size: 13px;")
 
         lbl_sub = QLabel("Menedżer aktualizacji i oprogramowania dystrybucji PolonOS")

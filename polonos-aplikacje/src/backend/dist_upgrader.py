@@ -84,7 +84,7 @@ class DistUpgrader:
     def check_for_upgrades(self):
         for url in self.ONLINE_RELEASE_URLS:
             try:
-                req = urllib.request.Request(url, headers={'User-Agent': 'PolonOS-Aplikacje/1.4'})
+                req = urllib.request.Request(url, headers={'User-Agent': 'PolonOS-Aplikacje/1.4.1'})
                 with urllib.request.urlopen(req, timeout=5) as resp:
                     data = json.loads(resp.read().decode('utf-8'))
                     latest_ver = str(data.get("latest_version", "1.3")).strip()

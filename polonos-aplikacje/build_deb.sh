@@ -7,11 +7,11 @@ echo "=== Rozpoczynanie budowania pakietu .deb dla PolonOS Aplikacje ==="
 # 1. Definiowanie katalogów
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build_deb_workspace"
-PKG_DIR="$BUILD_DIR/polonos-aplikacje_1.4.0_amd64"
+PKG_DIR="$BUILD_DIR/polonos-aplikacje_1.4.1_amd64"
 
 # Czyszczenie poprzednich buildów
 rm -rf "$BUILD_DIR"
-rm -f "$SCRIPT_DIR/polonos-aplikacje.deb" "$SCRIPT_DIR/polonos-aplikacje_1.0.0_amd64.deb" "$SCRIPT_DIR/polonos-aplikacje_1.4.0_amd64.deb"
+rm -f "$SCRIPT_DIR/polonos-aplikacje.deb" "$SCRIPT_DIR/polonos-aplikacje_1.0.0_amd64.deb" "$SCRIPT_DIR/polonos-aplikacje_1.4.0_amd64.deb" "$SCRIPT_DIR/polonos-aplikacje_1.4.1_amd64.deb"
 
 # 2. Tworzenie struktury katalogów
 mkdir -p "$PKG_DIR/DEBIAN"
@@ -101,7 +101,7 @@ echo "Tworzenie pliku kontrolnego DEBIAN/control..."
 INSTALLED_SIZE="$(du -sk "$PKG_DIR" | cut -f1)"
 cat << EOF > "$PKG_DIR/DEBIAN/control"
 Package: polonos-aplikacje
-Version: 1.4.0
+Version: 1.4.1
 Section: admin
 Priority: optional
 Architecture: all
@@ -208,10 +208,10 @@ chmod 755 "$PKG_DIR/DEBIAN/prerm"
 echo "Budowanie pakietu debianowego..."
 chmod 755 "$PKG_DIR" "$PKG_DIR/DEBIAN"
 chmod 644 "$PKG_DIR/DEBIAN/control"
-dpkg-deb --build "$PKG_DIR" "$SCRIPT_DIR/polonos-aplikacje_1.4.0_amd64.deb"
-cp "$SCRIPT_DIR/polonos-aplikacje_1.4.0_amd64.deb" "$SCRIPT_DIR/polonos-aplikacje.deb"
+dpkg-deb --build "$PKG_DIR" "$SCRIPT_DIR/polonos-aplikacje_1.4.1_amd64.deb"
+cp "$SCRIPT_DIR/polonos-aplikacje_1.4.1_amd64.deb" "$SCRIPT_DIR/polonos-aplikacje.deb"
 
 # Czyszczenie śmieci budowania
 rm -rf "$BUILD_DIR"
 
-echo "=== Sukces! Pakiet polonos-aplikacje_1.4.0_amd64.deb został utworzony! ==="
+echo "=== Sukces! Pakiet polonos-aplikacje_1.4.1_amd64.deb został utworzony! ==="
